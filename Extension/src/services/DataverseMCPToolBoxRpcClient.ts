@@ -1,0 +1,185 @@
+import * as cp from 'child_process';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { MessageConnection, createMessageConnection, StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc/node';
+import { ConnectionRequest, ConnectionResult, OrganizationDetail, WhoAmIResult } from '../models/RpcModels';
+
+/**
+ * Client JSON-RPC pour communiquer avec le serveur .NET Dataverse
+ */
+export class DataverseMCPToolBoxRpcClient {
+    private connection: MessageConnection | null = null;
+    private process: cp.ChildProcess | null = null;
+    private isConnected: boolean = false;
+
+    /**
+     * Démarre le serveur .NET et établit la connexion JSON-RPC
+     */
+    async connect(extensionPath: string): Promise<void> {
+        if (this.isConnected) {
+            return;
+        }
+
+        try {
+            // Chemin vers l'exécutable .NET
+            const executablePath = this.getDotNetExecutablePath(extensionPath);
+            
+            console.log(`Extension path: ${extensionPath}`);
+            console.log(`Starting .NET RPC server from: ${executablePath}`);
+
+            // Démarrer le processus .NET (exécutable self-contained)
+            this.process = cp.spawn(executablePath, [], {
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+
+            if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
+                throw new Error('Failed to create stdio streams for .NET process');
+            }
+
+            // Logger les erreurs du processus (stderr only - stdout is used for JSON-RPC)
+            this.process.stderr.on('data', (data) => {
+                console.error(`[.NET Server STDERR] ${data.toString()}`);
+            });
+
+            this.process.on('error', (error) => {
+                console.error('Failed to start .NET process:', error);
+                vscode.window.showErrorMessage(`Failed to start Dataverse RPC server: ${error.message}`);
+            });
+
+            this.process.on('exit', (code) => {
+                console.log(`.NET process exited with code ${code}`);
+                this.isConnected = false;
+            });
+
+            // Créer la connexion JSON-RPC avec encodage UTF-8 explicite
+            const reader = new StreamMessageReader(this.process.stdout, 'utf-8');
+            const writer = new StreamMessageWriter(this.process.stdin, 'utf-8');
+            this.connection = createMessageConnection(reader, writer);
+
+            // Debug: logger les messages envoyés et reçus
+            this.connection.trace(2, {
+                log: (message: string) => console.log(`[JSON-RPC TRACE] ${message}`)
+            });
+
+            // Gérer les erreurs de connexion
+            this.connection.onError((error: any) => {
+                console.error('JSON-RPC connection error:', error);
+            });
+
+            this.connection.onClose(() => {
+                console.log('JSON-RPC connection closed');
+                this.isConnected = false;
+            });
+
+            // Démarrer l'écoute
+            this.connection.listen();
+            
+            // Attendre un peu pour que le serveur soit prêt
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            this.isConnected = true;
+
+            console.log('JSON-RPC connection established');
+        } catch (error) {
+            console.error('Error connecting to .NET server:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Ferme la connexion et arrête le serveur .NET
+     */
+    async disconnect(): Promise<void> {
+        if (this.connection) {
+            this.connection.dispose();
+            this.connection = null;
+        }
+
+        if (this.process) {
+            this.process.kill();
+            this.process = null;
+        }
+
+        this.isConnected = false;
+    }
+
+    /**
+     * Crée une nouvelle connexion Dataverse
+     */
+    async createConnection(request: ConnectionRequest): Promise<ConnectionResult> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('CreateConnection', { request });
+    }
+
+    /**
+     * Teste si une connexion est valide
+     */
+    async testConnection(connectionId: string): Promise<boolean> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('TestConnection', { connectionId });
+    }
+
+    /**
+     * Récupère les détails de l'organisation
+     */
+    async getOrganizationDetails(connectionId: string): Promise<OrganizationDetail | null> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('GetOrganizationDetails', { connectionId });
+    }
+
+    /**
+     * Récupère les informations WhoAmI pour une connexion
+     */
+    async getWhoAmI(connectionId: string): Promise<WhoAmIResult> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('GetWhoAmI', { connectionId });
+    }
+
+    /**
+     * Ferme une connexion
+     */
+    async closeConnection(connectionId: string): Promise<void> {
+        this.ensureConnected();
+        await this.connection!.sendRequest('CloseConnection', { connectionId });
+    }
+
+    /**
+     * Ferme toutes les connexions
+     */
+    async closeAllConnections(): Promise<void> {
+        this.ensureConnected();
+        await this.connection!.sendRequest('CloseAllConnections');
+    }
+
+    private ensureConnected(): void {
+        if (!this.isConnected || !this.connection) {
+            throw new Error('RPC server is not ready yet. Please wait a moment and try again.');
+        }
+    }
+
+    private getDotNetExecutablePath(extensionPath: string): string {
+        // Déterminer la plateforme
+        const platform = this.getPlatform();
+        
+        // Nom de l'exécutable selon la plateforme
+        const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
+        
+        // Chemin vers l'exécutable self-contained publié
+        return path.join(extensionPath, '..', 'Core', 'publish', platform, executableName);
+    }
+
+    private getPlatform(): string {
+        const platform = process.platform;
+        const arch = process.arch;
+
+        if (platform === 'darwin') {
+            return arch === 'arm64' ? 'osx-arm64' : 'osx-x64';
+        } else if (platform === 'win32') {
+            return 'win-x64';
+        } else if (platform === 'linux') {
+            return 'linux-x64';
+        }
+        
+        throw new Error(`Unsupported platform: ${platform}-${arch}`);
+    }
+}

@@ -1,0 +1,116 @@
+{
+  "name": "dataverse-mcp-toolbox",
+  "displayName": "Dataverse MCP ToolBox",
+  "description": "Manage Dataverse connections for development",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dataverse-connections",
+          "title": "Dataverse Connections",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "dataverse-connections": [
+        {
+          "id": "dataverseConnectionsList",
+          "name": "Connections"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "dataversemcptoolbox.addConnection",
+        "title": "Add Connection",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dataversemcptoolbox.removeConnection",
+        "title": "Remove Connection",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "dataversemcptoolbox.setActiveConnection",
+        "title": "Set as Active Connection",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "dataversemcptoolbox.refreshConnections",
+        "title": "Refresh Connections",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dataversemcptoolbox.showWhoAmI",
+        "title": "Show WhoAmI Info",
+        "icon": "$(question)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "dataversemcptoolbox.addConnection",
+          "when": "view == dataverseConnectionsList",
+          "group": "navigation"
+        },
+        {
+          "command": "dataversemcptoolbox.refreshConnections",
+          "when": "view == dataverseConnectionsList",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "dataversemcptoolbox.showWhoAmI",
+          "when": "view == dataverseConnectionsList && viewItem == activeConnection",
+          "group": "inline@1"
+        },
+        {
+          "command": "dataversemcptoolbox.setActiveConnection",
+          "when": "view == dataverseConnectionsList && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "dataversemcptoolbox.removeConnection",
+          "when": "view == dataverseConnectionsList && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "dataversemcptoolbox.removeConnection",
+          "when": "view == dataverseConnectionsList && viewItem == activeConnection",
+          "group": "inline@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "18.x",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.0"
+  }
+}

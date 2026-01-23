@@ -1,0 +1,2 @@
+/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/publish/win-x64/DataverseMCPToolBox.pdb
+/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/publish/win-x64/DataverseMCPToolBox.exe
