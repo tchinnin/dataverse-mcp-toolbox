@@ -1,0 +1,61 @@
+########################################
+# .NET Build Outputs
+########################################
+
+# Build directories
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+
+# Platform-specific build outputs
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+linux-x64/
+linux-arm64/
+osx-x64/
+osx-arm64/
+win-x64/
+win-arm64/
+
+# Publish output
+publish/
+[Pp]ublish/
+
+########################################
+# .NET User-specific files
+########################################
+
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+########################################
+# NuGet
+########################################
+
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+########################################
+# Build artifacts
+########################################
+
+*.dll
+*.exe
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+*.sourcelink.json
+
+# Keep the main executable in publish folders
+!publish/**/DataverseMCPToolBox
+!publish/**/DataverseMCPToolBox.exe
