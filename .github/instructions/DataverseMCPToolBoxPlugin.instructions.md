@@ -700,7 +700,6 @@ When developing a DataverseMCPToolBox plugin, ensure:
 
 ## Additional Resources
 
-- [Extensibility Package README](../Extensibility/README.md)
 - [Microsoft Dataverse SDK Documentation](https://learn.microsoft.com/power-apps/developer/data-platform/)
 - [MCP Protocol Specification](https://modelcontextprotocol.io/)
 - [DataverseMCPToolBox Repository](https://github.com/tchinnin/dataverse-mcp-toolbox)
