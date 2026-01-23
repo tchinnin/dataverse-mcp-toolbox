@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>TCH.DataverseMCPToolBox.Plugins.SampleWhoAmI</PackageId>
+    <Version>1.0.0-alpha</Version>
+    <Authors>Théophile CHIN-NIN</Authors>
+    <Company>tchinnin</Company>
+    <Description>Sample WhoAmI plugin for DataverseMCPToolBox demonstrating extensibility with a simple Dataverse user information retrieval tool</Description>
+    <PackageTags>dataverse;mcp;plugin;sample;whoami;extensibility</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference the local Extensibility project for development -->
+    <ProjectReference Include="../Extensibility/DataverseMCPToolBox.Extensibility.csproj" />
+    
+    <!-- For NuGet package consumers, use this instead: -->
+    <!-- <PackageReference Include="DataverseMCPToolBox.Extensibility" Version="0.1.0-alpha" /> -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
