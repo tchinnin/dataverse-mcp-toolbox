@@ -5,17 +5,17 @@ using DataverseMCPToolBox.Extensibility.Exceptions;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
-using SampleWhoAmIPlugin.Models;
+using WhoAmI.Models;
 
-namespace SampleWhoAmIPlugin;
+namespace WhoAmI;
 
 /// <summary>
-/// Sample plugin that demonstrates the DataverseMCPToolBox extensibility framework.
-/// Provides a simple "who-am-i" tool to retrieve current user information from Dataverse.
+/// Plugin that provides user information retrieval from Dataverse.
+/// Provides a "who-am-i" tool to retrieve current user information.
 /// </summary>
-[McpPlugin("sample-whoami", "1.0.0",
+[McpPlugin("whoami", "1.0.0",
     Author = "Théophile CHIN-NIN",
-    Description = "Sample plugin demonstrating Dataverse user information retrieval using the WhoAmI operation")]
+    Description = "Dataverse user information retrieval using the WhoAmI operation")]
 public class WhoAmIPlugin : PluginBase
 {
     /// <summary>
@@ -25,7 +25,7 @@ public class WhoAmIPlugin : PluginBase
     /// <param name="cancellationToken">Cancellation token for initialization</param>
     public override Task InitializeAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
-        Console.Error.WriteLine("[WhoAmIPlugin] Initializing Sample WhoAmI Plugin v1.0.0");
+        Console.Error.WriteLine("[WhoAmIPlugin] Initializing WhoAmI Plugin v1.0.0");
         return base.InitializeAsync(serviceProvider, cancellationToken);
     }
 
@@ -52,7 +52,7 @@ public class WhoAmIPlugin : PluginBase
     /// </summary>
     public override void Dispose()
     {
-        Console.Error.WriteLine("[WhoAmIPlugin] Disposing Sample WhoAmI Plugin");
+        Console.Error.WriteLine("[WhoAmIPlugin] Disposing WhoAmI Plugin");
         base.Dispose();
     }
 }

@@ -1,6 +1,6 @@
-# Sample WhoAmI Plugin for DataverseMCPToolBox
+# WhoAmI Plugin for DataverseMCPToolBox
 
-A sample plugin demonstrating the **DataverseMCPToolBox.Extensibility** framework by implementing a simple "Who Am I" tool for Dataverse.
+A plugin demonstrating the **DataverseMCPToolBox.Extensibility** framework by implementing a "Who Am I" tool for Dataverse.
 
 ## Overview
 
@@ -40,13 +40,13 @@ This sample demonstrates:
 
 3. The package will be created at:
    ```
-   bin/Release/TCH.DataverseMCPToolBox.Plugins.SampleWhoAmI.1.0.0.nupkg
+   bin/Release/DataverseMCPToolBox.WhoAmI.1.0.0-alpha.nupkg
    ```
 
 ### From NuGet (if published)
 
 ```bash
-dotnet add package TCH.DataverseMCPToolBox.Plugins.SampleWhoAmI
+dotnet add package DataverseMCPToolBox.WhoAmI
 ```
 
 ## Usage
@@ -88,8 +88,8 @@ Once the plugin is loaded by the DataverseMCPToolBox server, it exposes the foll
 
 ```
 SampleWhoAmIPlugin/
-├── SampleWhoAmIPlugin.csproj    # Project file with NuGet dependencies
-├── WhoAmIPlugin.cs              # Main plugin class and tool implementation
+├── WhoAmI.csproj               # Project file with NuGet dependencies
+├── WhoAmIPlugin.cs             # Main plugin class and tool implementation
 ├── Models/
 │   └── WhoAmIOutput.cs          # Output model for the tool
 └── README.md                     # This file

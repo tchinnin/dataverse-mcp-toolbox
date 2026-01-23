@@ -3,6 +3,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { MessageConnection, createMessageConnection, StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc/node';
 import { ConnectionRequest, ConnectionResult, OrganizationDetail, WhoAmIResult } from '../models/RpcModels';
+import { PluginInfo } from '../models/PluginInfo';
+import { ToolInfo } from '../models/ToolInfo';
+import { ToolCallRequest } from '../models/ToolCallRequest';
+import { ToolCallResult } from '../models/ToolCallResult';
+import { PluginInstallRequest, PluginInstallResult } from '../models/PluginInstallRequest';
 
 /**
  * Client JSON-RPC pour communiquer avec le serveur .NET Dataverse
@@ -149,6 +154,62 @@ export class DataverseMCPToolBoxRpcClient {
     async closeAllConnections(): Promise<void> {
         this.ensureConnected();
         await this.connection!.sendRequest('CloseAllConnections');
+    }
+
+    /**
+     * Set the plugin directory path (must be called before plugin operations)
+     */
+    async setPluginDirectory(directoryPath: string): Promise<void> {
+        this.ensureConnected();
+        await this.connection!.sendRequest('SetPluginDirectory', { directoryPath });
+    }
+
+    /**
+     * Install a plugin from NuGet
+     */
+    async installPlugin(request: PluginInstallRequest): Promise<PluginInstallResult> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('InstallPlugin', { request });
+    }
+
+    /**
+     * Uninstall a plugin
+     */
+    async uninstallPlugin(packageId: string): Promise<boolean> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('UninstallPlugin', { packageId });
+    }
+
+    /**
+     * Reload all plugins
+     */
+    async reloadPlugins(): Promise<void> {
+        this.ensureConnected();
+        await this.connection!.sendRequest('ReloadPlugins');
+    }
+
+    /**
+     * List all installed plugins
+     */
+    async listPlugins(): Promise<PluginInfo[]> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('ListPlugins');
+    }
+
+    /**
+     * List all available MCP tools
+     */
+    async listTools(): Promise<ToolInfo[]> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('ListTools');
+    }
+
+    /**
+     * Execute an MCP tool
+     */
+    async callTool(request: ToolCallRequest): Promise<ToolCallResult> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('CallTool', { request });
     }
 
     private ensureConnected(): void {

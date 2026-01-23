@@ -28,6 +28,10 @@
         {
           "id": "dataverseConnectionsList",
           "name": "Connections"
+        },
+        {
+          "id": "dataversemcptoolbox.pluginsView",
+          "name": "MCP Plugins"
         }
       ]
     },
@@ -56,6 +60,26 @@
         "command": "dataversemcptoolbox.showWhoAmI",
         "title": "Show WhoAmI Info",
         "icon": "$(question)"
+      },
+      {
+        "command": "dataversemcptoolbox.refreshPlugins",
+        "title": "Refresh Plugins",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dataversemcptoolbox.installPlugin",
+        "title": "Install Plugin from NuGet",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "dataversemcptoolbox.uninstallPlugin",
+        "title": "Uninstall Plugin",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "dataversemcptoolbox.callTool",
+        "title": "Execute Tool",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -68,6 +92,16 @@
         {
           "command": "dataversemcptoolbox.refreshConnections",
           "when": "view == dataverseConnectionsList",
+          "group": "navigation"
+        },
+        {
+          "command": "dataversemcptoolbox.refreshPlugins",
+          "when": "view == dataversemcptoolbox.pluginsView",
+          "group": "navigation"
+        },
+        {
+          "command": "dataversemcptoolbox.installPlugin",
+          "when": "view == dataversemcptoolbox.pluginsView",
           "group": "navigation"
         }
       ],
@@ -91,6 +125,16 @@
           "command": "dataversemcptoolbox.removeConnection",
           "when": "view == dataverseConnectionsList && viewItem == activeConnection",
           "group": "inline@2"
+        },
+        {
+          "command": "dataversemcptoolbox.uninstallPlugin",
+          "when": "view == dataversemcptoolbox.pluginsView && viewItem == plugin",
+          "group": "inline"
+        },
+        {
+          "command": "dataversemcptoolbox.callTool",
+          "when": "view == dataversemcptoolbox.pluginsView && viewItem == tool",
+          "group": "inline"
         }
       ]
     }

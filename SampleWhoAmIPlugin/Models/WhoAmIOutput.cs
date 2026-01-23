@@ -1,4 +1,4 @@
-namespace SampleWhoAmIPlugin.Models;
+namespace WhoAmI.Models;
 
 /// <summary>
 /// Output model for the who-am-i tool containing detailed user and environment information.
