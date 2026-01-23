@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DataverseMCPToolBox")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d60d181beddd9540d231e8e4fbb8034f919a9d0b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fac2d4c41dd407cd0dfa9e35f3f28d163d7a148f")]
 [assembly: System.Reflection.AssemblyProductAttribute("DataverseMCPToolBox")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DataverseMCPToolBox")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

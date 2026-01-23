@@ -1,3 +1,33 @@
-# Publish folders containing platform-specific executables
-Core/publish/
-publish/
+########################################
+# General
+########################################
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.vs/
+.idea/
+
+# Misc
+*.swp
+*.swo
+*~
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
+# Misc
+*.swp
+*.swo
+*~
