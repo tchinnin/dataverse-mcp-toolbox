@@ -12,10 +12,12 @@ public class PluginLoaderService
     private readonly string _pluginDirectory;
     private readonly List<IPlugin> _loadedPlugins = new();
     private readonly Dictionary<string, Assembly> _loadedAssemblies = new();
+    private readonly IServiceProvider _serviceProvider;
 
     public PluginLoaderService(string pluginDirectory)
     {
         _pluginDirectory = pluginDirectory;
+        _serviceProvider = new PluginServiceProvider();
     }
 
     /// <summary>
@@ -114,8 +116,8 @@ public class PluginLoaderService
                     continue;
                 }
 
-                // Initialize plugin (without connection context yet)
-                await pluginInstance.InitializeAsync(null!);
+                // Initialize plugin with service provider
+                await pluginInstance.InitializeAsync(_serviceProvider);
 
                 _loadedPlugins.Add(pluginInstance);
                 Console.Error.WriteLine($"Successfully loaded plugin: {manifest.Name}");

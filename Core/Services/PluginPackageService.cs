@@ -25,7 +25,11 @@ public class PluginPackageService
         if (!Directory.Exists(_pluginDirectory))
         {
             Directory.CreateDirectory(_pluginDirectory);
-            Console.Error.WriteLine($"Created plugin directory: {_pluginDirectory}");
+            Console.Error.WriteLine($"[PluginPackageService] Created plugin directory: {_pluginDirectory}");
+        }
+        else
+        {
+            Console.Error.WriteLine($"[PluginPackageService] Using existing plugin directory: {_pluginDirectory}");
         }
     }
 
@@ -117,7 +121,8 @@ public class PluginPackageService
             // Clean up temp file
             File.Delete(packagePath);
 
-            Console.Error.WriteLine($"Plugin installed successfully to: {extractPath}");
+            Console.Error.WriteLine($"[PluginPackageService] ✓ Plugin '{packageId}' installed successfully");
+            Console.Error.WriteLine($"[PluginPackageService] Installation path: {extractPath}");
             return (true, null, extractPath);
         }
         catch (Exception ex)

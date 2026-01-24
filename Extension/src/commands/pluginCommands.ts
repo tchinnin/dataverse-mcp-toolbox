@@ -59,6 +59,8 @@ export function registerPluginCommands(
                     async (progress) => {
                         progress.report({ increment: 0 });
 
+                        console.log(`Installing plugin from NuGet: ${packageId} ${version || 'latest'}`);
+                        
                         const result = await rpcClient.installPlugin({
                             packageId,
                             version: version || undefined
@@ -66,9 +68,10 @@ export function registerPluginCommands(
 
                         if (result.success) {
                             progress.report({ increment: 100 });
+                            console.log(`Plugin installed successfully: ${result.pluginInfo?.name}`);
                             await pluginsTreeProvider.loadPlugins();
                             vscode.window.showInformationMessage(
-                                `Plugin ${result.pluginInfo?.name} installed successfully`
+                                `Plugin ${result.pluginInfo?.name} installed successfully in extension folder`
                             );
                         } else {
                             throw new Error(result.errorMessage || 'Unknown error');

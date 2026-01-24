@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ConnectionStorageService } from './services/ConnectionStorageService';
 import { ConnectionsTreeDataProvider } from './providers/ConnectionsTreeDataProvider';
 import { PluginsTreeProvider } from './providers/PluginsTreeProvider';
@@ -49,10 +50,18 @@ export async function activate(context: vscode.ExtensionContext) {
         .then(async () => {
             console.log('Connected to Dataverse RPC server');
             
-            // Set up plugin directory
+            // Set up plugin directory in extension folder
             const pluginDirectory = path.join(context.extensionPath, 'plugins');
+            console.log(`Setting plugin directory to: ${pluginDirectory}`);
+            
+            // Ensure the plugins directory exists
+            if (!fs.existsSync(pluginDirectory)) {
+                fs.mkdirSync(pluginDirectory, { recursive: true });
+                console.log(`Created plugins directory at: ${pluginDirectory}`);
+            }
+            
             await rpcClient.setPluginDirectory(pluginDirectory);
-            console.log(`Plugin directory set to: ${pluginDirectory}`);
+            console.log(`Plugin directory configured successfully`);
 
             // Check if bundled plugins have been installed
             const bundledPluginsInstalled = context.globalState.get<boolean>('bundledPluginsInstalled', false);
