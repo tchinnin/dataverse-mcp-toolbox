@@ -1,31 +1,52 @@
 #!/bin/bash
-# Script pour publier le serveur .NET pour toutes les plateformes
+# Script to publish the .NET server for all platforms
+# Builds self-contained executables and prepares them for NuGet packaging
 
-# Se placer dans le répertoire du projet (parent du dossier scripts)
+set -e
+
+# Navigate to project directory (parent of scripts folder)
 cd "$(dirname "$0")/.."
 
 echo "🚀 Building self-contained executables for all platforms..."
+echo ""
 
-# Nettoyer les anciennes publications
+# Clean old publish directories
 rm -rf ./publish
 
-# macOS ARM64 (Apple Silicon)
-echo "📦 Building for macOS ARM64..."
-dotnet publish -c Release -r osx-arm64 -o ./publish/osx-arm64 --self-contained
+# Array of target platforms
+platforms=("osx-arm64" "osx-x64" "win-x64" "linux-x64")
 
-# macOS x64 (Intel)
-echo "📦 Building for macOS x64..."
-dotnet publish -c Release -r osx-x64 -o ./publish/osx-x64 --self-contained
-
-# Windows x64
-echo "📦 Building for Windows x64..."
-dotnet publish -c Release -r win-x64 -o ./publish/win-x64 --self-contained
-
-# Linux x64
-echo "📦 Building for Linux x64..."
-dotnet publish -c Release -r linux-x64 -o ./publish/linux-x64 --self-contained
+# Build for each platform
+for platform in "${platforms[@]}"; do
+    echo "📦 Building for $platform..."
+    
+    # Publish to temporary directory
+    temp_dir="./publish/temp-$platform"
+    dotnet publish -c Release -r "$platform" -o "$temp_dir" --self-contained true /p:PublishSingleFile=true
+    
+    # Create final directory and copy only the executable
+    final_dir="./publish/$platform"
+    mkdir -p "$final_dir"
+    
+    # Copy only the main executable (not .pdb or other files)
+    if [[ "$platform" == win-* ]]; then
+        cp "$temp_dir/DataverseMCPToolBox.exe" "$final_dir/"
+        echo "   ✓ Copied DataverseMCPToolBox.exe"
+    else
+        cp "$temp_dir/DataverseMCPToolBox" "$final_dir/"
+        chmod +x "$final_dir/DataverseMCPToolBox"
+        echo "   ✓ Copied DataverseMCPToolBox (executable)"
+    fi
+    
+    # Clean up temporary directory
+    rm -rf "$temp_dir"
+    echo ""
+done
 
 echo "✅ Build complete! Executables are in ./publish/"
 echo ""
-echo "Sizes:"
-du -sh ./publish/*/DataverseMCPToolBox* 2>/dev/null | grep -v "\.pdb"
+echo "📊 Binary sizes:"
+du -sh ./publish/*/DataverseMCPToolBox* 2>/dev/null
+echo ""
+echo "📁 Directory structure for NuGet packaging:"
+tree -L 2 ./publish 2>/dev/null || find ./publish -type f -print | sed 's|[^/]*/| |g'

@@ -89,10 +89,12 @@ export function registerCommands(
                         refreshToken: result.refreshToken,
                         expiresOn: result.expiresOn
                     });
+                    console.log(`Stored tokens for new connection ${name} (expires: ${result.expiresOn})`);
                 }
 
                 // Set as active connection
                 await storageService.setActiveConnection(connection.id);
+                console.log(`New connection ${name} created and set as active`);
 
                 return result;
             });
@@ -154,49 +156,83 @@ export function registerCommands(
                 }
                 
                 // Deactivate all by setting a non-existent ID
-                const connections = storageService.getConnections();
-                connections.forEach(c => c.isActive = false);
-                await storageService.setActiveConnection(''); // This will deactivate all
+                await storageService.deactivateAllConnections();
                 vscode.window.showInformationMessage('Connection deactivated');
             } else {
-                // Try to connect with stored tokens or prompt for new auth
+                // Activate the selected connection with token validation
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: `Activating ${item.connection.name}...`,
                     cancellable: false
                 }, async (progress) => {
-                    progress.report({ message: 'Checking credentials...' });
-
                     // Check if we have stored tokens
                     const storedTokens = await tokenStorageService.getTokens(item.connection.id);
                     
                     let result;
-                    if (storedTokens && !tokenStorageService.isTokenExpired(storedTokens)) {
-                        // Try to connect with existing tokens
-                        progress.report({ message: 'Connecting with stored credentials...' });
+                    
+                    if (storedTokens) {
+                        // Check if token is expired
+                        const isExpired = tokenStorageService.isTokenExpired(storedTokens);
                         
-                        try {
-                            result = await rpcClient.createConnection({
-                                environmentUrl: item.connection.url,
-                                connectionName: item.connection.name,
-                                accessToken: storedTokens.accessToken,
-                                refreshToken: storedTokens.refreshToken
-                            });
+                        if (!isExpired) {
+                            // Token still valid, try to connect
+                            progress.report({ message: 'Connecting with stored credentials...' });
+                            console.log(`Token for ${item.connection.name} is still valid, attempting connection...`);
+                            
+                            try {
+                                result = await rpcClient.createConnection({
+                                    environmentUrl: item.connection.url,
+                                    connectionName: item.connection.name,
+                                    accessToken: storedTokens.accessToken,
+                                    refreshToken: storedTokens.refreshToken
+                                });
 
-                            if (!result.success) {
-                                throw new Error('Token no longer valid');
+                                if (!result.success) {
+                                    throw new Error('Token validation failed');
+                                }
+                                
+                                console.log(`Successfully connected with stored token for ${item.connection.name}`);
+                            } catch (error) {
+                                // Token rejected by server, need to re-authenticate
+                                console.log(`Stored token rejected for ${item.connection.name}, re-authenticating...`);
+                                progress.report({ message: 'Token expired, re-authenticating...' });
+                                result = await rpcClient.createConnection({
+                                    environmentUrl: item.connection.url,
+                                    connectionName: item.connection.name
+                                });
                             }
-                        } catch {
-                            // Tokens are invalid, need to re-authenticate
-                            progress.report({ message: 'Re-authenticating...' });
-                            result = await rpcClient.createConnection({
-                                environmentUrl: item.connection.url,
-                                connectionName: item.connection.name
-                            });
+                        } else {
+                            // Token is expired, try refresh via server (server will handle refresh token)
+                            progress.report({ message: 'Token expired, refreshing...' });
+                            console.log(`Token for ${item.connection.name} is expired, attempting refresh...`);
+                            
+                            try {
+                                result = await rpcClient.createConnection({
+                                    environmentUrl: item.connection.url,
+                                    connectionName: item.connection.name,
+                                    accessToken: storedTokens.accessToken,
+                                    refreshToken: storedTokens.refreshToken
+                                });
+
+                                if (!result.success) {
+                                    throw new Error('Token refresh failed');
+                                }
+                                
+                                console.log(`Successfully refreshed token for ${item.connection.name}`);
+                            } catch (error) {
+                                // Refresh failed, need interactive authentication
+                                console.log(`Token refresh failed for ${item.connection.name}, requiring interactive authentication...`);
+                                progress.report({ message: 'Re-authenticating interactively...' });
+                                result = await rpcClient.createConnection({
+                                    environmentUrl: item.connection.url,
+                                    connectionName: item.connection.name
+                                });
+                            }
                         }
                     } else {
-                        // No valid tokens, authenticate
-                        progress.report({ message: 'Authenticating...' });
+                        // No tokens stored, need interactive authentication
+                        progress.report({ message: 'No stored credentials, authenticating...' });
+                        console.log(`No stored tokens for ${item.connection.name}, requiring authentication...`);
                         result = await rpcClient.createConnection({
                             environmentUrl: item.connection.url,
                             connectionName: item.connection.name
@@ -211,17 +247,19 @@ export function registerCommands(
                     item.connection.metadata = { rpcConnectionId: result.connectionId };
                     await storageService.updateConnection(item.connection);
 
-                    // Store new tokens
+                    // Store new tokens securely
                     if (result.accessToken) {
                         await tokenStorageService.storeTokens(item.connection.id, {
                             accessToken: result.accessToken,
                             refreshToken: result.refreshToken,
                             expiresOn: result.expiresOn
                         });
+                        console.log(`Stored new tokens for ${item.connection.name} (expires: ${result.expiresOn})`);
                     }
 
                     // Set as active
                     await storageService.setActiveConnection(item.connection.id);
+                    console.log(`${item.connection.name} is now the active connection`);
                 });
 
                 vscode.window.showInformationMessage(`✅ "${item.connection.name}" is now active`);

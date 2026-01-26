@@ -8,3 +8,5 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+# Note: plugins/ folder should be included (not ignored) so NuGet packages can be downloaded here
+!plugins/
