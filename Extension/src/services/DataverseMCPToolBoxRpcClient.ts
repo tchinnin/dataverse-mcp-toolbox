@@ -20,20 +20,16 @@ export class DataverseMCPToolBoxRpcClient {
     /**
      * Démarre le serveur .NET et établit la connexion JSON-RPC
      */
-    async connect(extensionPath: string): Promise<void> {
+    async connect(serverPath: string): Promise<void> {
         if (this.isConnected) {
             return;
         }
 
         try {
-            // Chemin vers l'exécutable .NET
-            const executablePath = this.getDotNetExecutablePath(extensionPath);
-            
-            console.log(`Extension path: ${extensionPath}`);
-            console.log(`Starting .NET RPC server from: ${executablePath}`);
+            console.error(`[RPC Client] Starting .NET RPC server from: ${serverPath}`);
 
             // Démarrer le processus .NET (exécutable self-contained)
-            this.process = cp.spawn(executablePath, [], {
+            this.process = cp.spawn(serverPath, [], {
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
@@ -216,31 +212,5 @@ export class DataverseMCPToolBoxRpcClient {
         if (!this.isConnected || !this.connection) {
             throw new Error('RPC server is not ready yet. Please wait a moment and try again.');
         }
-    }
-
-    private getDotNetExecutablePath(extensionPath: string): string {
-        // Déterminer la plateforme
-        const platform = this.getPlatform();
-        
-        // Nom de l'exécutable selon la plateforme
-        const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
-        
-        // Chemin vers l'exécutable self-contained publié
-        return path.join(extensionPath, '..', 'Core', 'publish', platform, executableName);
-    }
-
-    private getPlatform(): string {
-        const platform = process.platform;
-        const arch = process.arch;
-
-        if (platform === 'darwin') {
-            return arch === 'arm64' ? 'osx-arm64' : 'osx-x64';
-        } else if (platform === 'win32') {
-            return 'win-x64';
-        } else if (platform === 'linux') {
-            return 'linux-x64';
-        }
-        
-        throw new Error(`Unsupported platform: ${platform}-${arch}`);
     }
 }

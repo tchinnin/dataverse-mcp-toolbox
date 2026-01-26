@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "List of plugins to automatically install when the extension is first activated",
+  "plugins": [
+    {
+      "packageId": "DataverseMCPToolBox.WhoAmI",
+      "version": null,
+      "description": "Get current user information from Dataverse"
+    }
+  ]
+}

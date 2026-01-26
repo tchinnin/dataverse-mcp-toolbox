@@ -3,6 +3,7 @@
   "displayName": "Dataverse MCP ToolBox",
   "description": "Manage Dataverse connections for development",
   "version": "0.0.1",
+  "publisher": "tchinnin",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -14,6 +15,25 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Dataverse MCP ToolBox",
+      "properties": {
+        "dataverse.server.channel": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "prerelease"
+          ],
+          "default": "prerelease",
+          "description": "Update channel for MCP server - determines which latest version to install (stable or prerelease)"
+        },
+        "dataverse.server.enforcedVersion": {
+          "type": "string",
+          "default": "",
+          "description": "Specific server version to enforce (e.g., '0.1.0-alpha'). Leave empty to always use the latest version from the selected channel."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -32,6 +52,10 @@
         {
           "id": "dataversemcptoolbox.pluginsView",
           "name": "MCP Plugins"
+        },
+        {
+          "id": "dataversemcptoolbox.serverInfoView",
+          "name": "MCP Server Info"
         }
       ]
     },
@@ -80,6 +104,36 @@
         "command": "dataversemcptoolbox.callTool",
         "title": "Execute Tool",
         "icon": "$(play)"
+      },
+      {
+        "command": "dataversemcptoolbox.updateServer",
+        "title": "Dataverse: Check for Server Updates",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "dataversemcptoolbox.upgradeServer",
+        "title": "Upgrade MCP Server",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "dataversemcptoolbox.checkServerUpdates",
+        "title": "Check for Server Updates",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dataversemcptoolbox.configureServerSettings",
+        "title": "Configure Server Settings",
+        "icon": "$(settings)"
+      },
+      {
+        "command": "dataversemcptoolbox.toggleServerChannel",
+        "title": "Toggle Server Channel",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "dataversemcptoolbox.toggleEnforcedVersion",
+        "title": "Set Enforced Version",
+        "icon": "$(tag)"
       }
     ],
     "menus": {
@@ -147,14 +201,16 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "18.x",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "vscode-jsonrpc": "^8.2.0"
   }
 }

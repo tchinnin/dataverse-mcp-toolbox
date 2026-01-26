@@ -9,6 +9,20 @@
     <PublishTrimmed>false</PublishTrimmed>
     <SelfContained>true</SelfContained>
     <NoWarn>VSTHRD103</NoWarn>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>DataverseMCPToolBox.Server</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>Théophile CHIN-NIN</Authors>
+    <Company>tchinnin</Company>
+    <Description>MCP (Model Context Protocol) server for Dataverse operations. Provides JSON-RPC interface for managing Dataverse connections and executing plugins.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</PackageProjectUrl>
+    <PackageTags>dataverse;mcp;server;model-context-protocol;power-platform</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +36,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Extensibility\DataverseMCPToolBox.Extensibility.csproj" />
+  </ItemGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Include platform-specific binaries in NuGet package -->
+  <ItemGroup>
+    <None Include="publish/osx-arm64/**" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
+    <None Include="publish/osx-x64/**" Pack="true" PackagePath="runtimes/osx-x64/native/" />
+    <None Include="publish/win-x64/**" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="publish/linux-x64/**" Pack="true" PackagePath="runtimes/linux-x64/native/" />
   </ItemGroup>
 
 </Project>
