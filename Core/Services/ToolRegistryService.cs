@@ -125,14 +125,6 @@ public class ToolRegistryService
     }
 
     /// <summary>
-    /// Check if a tool exists
-    /// </summary>
-    public bool HasTool(string toolName)
-    {
-        return _toolRegistry.ContainsKey(toolName);
-    }
-
-    /// <summary>
     /// Get count of registered tools
     /// </summary>
     public int GetToolCount()

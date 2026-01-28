@@ -6,7 +6,6 @@ namespace DataverseMCPToolBox.Models;
 public class ConnectionRequest
 {
     public required string EnvironmentUrl { get; set; }
-    public string? ConnectionName { get; set; }
     public string? AccessToken { get; set; }
     public string? RefreshToken { get; set; }
 }

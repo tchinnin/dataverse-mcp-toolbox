@@ -136,13 +136,4 @@ public class PluginLoaderService
     {
         return _loadedPlugins.ToList();
     }
-
-    /// <summary>
-    /// Clear all loaded plugins
-    /// </summary>
-    public void ClearPlugins()
-    {
-        _loadedPlugins.Clear();
-        _loadedAssemblies.Clear();
-    }
 }

@@ -1,0 +1,5 @@
+{
+    // Force the extension to use the local development version
+    "dataverse.server.enforcedVersion": "0.1.0-alpha",
+    "dataverse.server.channel": "prerelease"
+}

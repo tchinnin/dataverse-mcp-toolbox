@@ -25,6 +25,22 @@ public class ToolExecutionService
     /// </summary>
     public async Task<ToolCallResult> ExecuteToolAsync(ToolCallRequest request)
     {
+        // Validate request
+        var (isValid, error) = InputValidator.ValidateToolCallRequest(request);
+        if (!isValid)
+        {
+            Console.Error.WriteLine($"[ToolExecutionService] Validation failed: {error}");
+            return new ToolCallResult
+            {
+                IsSuccess = false,
+                Error = new ToolErrorInfo
+                {
+                    Code = "VALIDATION_ERROR",
+                    Message = error!
+                }
+            };
+        }
+
         try
         {
             Console.Error.WriteLine($"Executing tool: {request.ToolName} with connection: {request.ConnectionId}");
@@ -55,6 +71,20 @@ public class ToolExecutionService
                     {
                         Code = "CONNECTION_NOT_FOUND",
                         Message = $"Connection '{request.ConnectionId}' not found"
+                    }
+                };
+            }
+
+            // Verify connection is ready
+            if (!serviceClient.IsReady)
+            {
+                return new ToolCallResult
+                {
+                    IsSuccess = false,
+                    Error = new ToolErrorInfo
+                    {
+                        Code = "CONNECTION_NOT_READY",
+                        Message = $"Connection '{request.ConnectionId}' is not ready or has been disconnected"
                     }
                 };
             }

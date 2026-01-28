@@ -1,14 +1,15 @@
 {
   "name": "dataverse-mcp-toolbox",
   "displayName": "Dataverse MCP ToolBox",
-  "description": "Manage Dataverse connections for development",
+  "description": "Manage Dataverse connections and expose MCP tools for GitHub Copilot",
   "version": "0.0.1",
   "publisher": "tchinnin",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "AI"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -134,6 +135,21 @@
         "command": "dataversemcptoolbox.toggleEnforcedVersion",
         "title": "Set Enforced Version",
         "icon": "$(tag)"
+      },
+      {
+        "command": "dataversemcptoolbox.openMcpConfiguration",
+        "title": "Dataverse: Open MCP Configuration",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "dataversemcptoolbox.reregisterMcpServer",
+        "title": "Dataverse: Re-register MCP Server",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "dataversemcptoolbox.unregisterMcpServer",
+        "title": "Dataverse: Unregister MCP Server",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -198,7 +214,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "copy-local-server": "bash scripts/copy-local-server.sh",
+    "dev": "npm run compile && npm run copy-local-server"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

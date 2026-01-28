@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ServerManager } from '../services/ServerManager';
 import { DataverseMCPToolBoxRpcClient } from '../services/DataverseMCPToolBoxRpcClient';
 import { ServerInfoTreeProvider } from '../providers/ServerInfoTreeProvider';
+import { MCPConfigurationService } from '../services/MCPConfigurationService';
 
 /**
  * Register server management commands
@@ -11,7 +12,8 @@ export function registerServerCommands(
     context: vscode.ExtensionContext,
     serverManager: ServerManager,
     rpcClient: DataverseMCPToolBoxRpcClient,
-    serverInfoProvider: ServerInfoTreeProvider
+    serverInfoProvider: ServerInfoTreeProvider,
+    mcpConfigService: MCPConfigurationService
 ): void {
 
     // Command: Upgrade server to latest version
@@ -53,13 +55,16 @@ export function registerServerCommands(
                     // Upgrade server
                     const newServerPath = await serverManager.upgradeServer();
 
+                    // Get plugin directory
+                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+
+                    // Re-register MCP server with new path
+                    progress.report({ message: 'Updating MCP configuration...' });
+                    await mcpConfigService.updateServerPath(newServerPath, pluginDirectory);
+
                     // Reconnect with new version
                     progress.report({ message: 'Restarting server...' });
-                    await rpcClient.connect(newServerPath);
-
-                    // Reconfigure plugin directory
-                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-                    await rpcClient.setPluginDirectory(pluginDirectory);
+                    await rpcClient.connect(newServerPath, pluginDirectory);
 
                     vscode.window.showInformationMessage(
                         `Successfully upgraded MCP Server to v${latestVersion}`
@@ -373,6 +378,55 @@ export function registerServerCommands(
             } catch (error) {
                 console.error('Failed to configure server settings:', error);
                 vscode.window.showErrorMessage(`Failed to configure settings: ${error}`);
+            }
+        })
+    );
+
+    // Command: Open MCP configuration file
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.openMcpConfiguration', () => {
+            try {
+                mcpConfigService.openMcpConfiguration();
+            } catch (error) {
+                console.error('Failed to open MCP configuration:', error);
+                vscode.window.showErrorMessage(`Failed to open MCP configuration: ${error}`);
+            }
+        })
+    );
+
+    // Command: Re-register MCP server (useful after manual config edits)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.reregisterMcpServer', async () => {
+            try {
+                // Ensure server is installed and get its path
+                const serverPath = await serverManager.ensureServerInstalled();
+                const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+                await mcpConfigService.registerMcpServer(serverPath, pluginDirectory);
+            } catch (error) {
+                console.error('Failed to re-register MCP server:', error);
+                vscode.window.showErrorMessage(`Failed to re-register MCP server: ${error}`);
+            }
+        })
+    );
+
+    // Command: Unregister MCP server from VS Code configuration
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.unregisterMcpServer', async () => {
+            try {
+                const confirmation = await vscode.window.showWarningMessage(
+                    'Are you sure you want to unregister the Dataverse MCP server from VS Code? You can re-register it later.',
+                    'Unregister',
+                    'Cancel'
+                );
+
+                if (confirmation !== 'Unregister') {
+                    return;
+                }
+
+                await mcpConfigService.unregisterMcpServer();
+            } catch (error) {
+                console.error('Failed to unregister MCP server:', error);
+                vscode.window.showErrorMessage(`Failed to unregister MCP server: ${error}`);
             }
         })
     );

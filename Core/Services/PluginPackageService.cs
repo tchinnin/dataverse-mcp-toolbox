@@ -164,15 +164,4 @@ public class PluginPackageService
             return false;
         }
     }
-
-    /// <summary>
-    /// Get list of installed plugin directories
-    /// </summary>
-    public List<string> GetInstalledPluginDirectories()
-    {
-        if (!Directory.Exists(_pluginDirectory))
-            return new List<string>();
-
-        return Directory.GetDirectories(_pluginDirectory).ToList();
-    }
 }

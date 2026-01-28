@@ -1,5 +1,6 @@
 using DataverseMCPToolBox.Models;
 using DataverseMCPToolBox.Services;
+using StreamJsonRpc;
 
 namespace DataverseMCPToolBox.JsonRpc;
 
@@ -9,15 +10,67 @@ namespace DataverseMCPToolBox.JsonRpc;
 public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
 {
     private readonly DataverseConnectionService _connectionService;
-    private PluginPackageService? _pluginPackageService;
-    private PluginLoaderService? _pluginLoaderService;
-    private ToolRegistryService? _toolRegistryService;
-    private ToolExecutionService? _toolExecutionService;
-    private string? _pluginDirectory;
+    private readonly ConnectionStateService _connectionStateService;
+    private IPluginManager _pluginManager;
+    private IToolManager _toolManager;
+    private McpProtocolService _mcpProtocolService;
+    private readonly ToolRegistryService _toolRegistryService;
+    private readonly ToolExecutionService _toolExecutionService;
+    private string? _activeConnectionId;
+    private StreamJsonRpc.JsonRpc? _jsonRpcConnection;
+    private readonly string _pluginDirectory;
 
-    public DataverseMCPToolBoxRpcService()
+    public DataverseMCPToolBoxRpcService(string pluginDirectory)
     {
-        _connectionService = new DataverseConnectionService();
+        _pluginDirectory = pluginDirectory;
+        
+        // Initialize connection state service (now used only for optional persistence between restarts)
+        _connectionStateService = new ConnectionStateService(pluginDirectory);
+        _connectionService = new DataverseConnectionService(_connectionStateService);
+        
+        // Initialize plugin manager immediately
+        Console.Error.WriteLine($"[Management RPC] Initializing with plugin directory: {pluginDirectory}");
+        _pluginManager = new PluginManager();
+        _pluginManager.InitializeAsync(pluginDirectory).GetAwaiter().GetResult();
+
+        // Get the registry service from plugin manager
+        _toolRegistryService = ((PluginManager)_pluginManager).GetRegistryService();
+        _toolExecutionService = new ToolExecutionService(_toolRegistryService, _connectionService);
+        
+        // Initialize tool manager
+        _toolManager = new ToolManager(_toolRegistryService, _toolExecutionService);
+
+        // Create MCP protocol service immediately (will be registered when JsonRpc connection is set)
+        // UNIFIED INSTANCE: Both Extension and Copilot share the same in-memory state
+        _mcpProtocolService = new McpProtocolService(
+            _toolRegistryService,
+            _connectionService,
+            _toolExecutionService,
+            _connectionStateService
+        );
+        Console.Error.WriteLine("[Management RPC] ✓ MCP Protocol service created (unified instance - shared in-memory state)");
+
+        // Load existing plugins
+        _pluginManager.ReloadPluginsAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Set the JSON-RPC connection and register MCP service
+    /// Called from Program.cs
+    /// </summary>
+    public void SetJsonRpcConnection(StreamJsonRpc.JsonRpc jsonRpc)
+    {
+        _jsonRpcConnection = jsonRpc;
+        
+        // Register MCP protocol service now that we have the connection
+        _jsonRpcConnection.AddLocalRpcTarget(_mcpProtocolService, new JsonRpcTargetOptions
+        {
+            NotifyClientOfEvents = false
+        });
+        Console.Error.WriteLine("[Management RPC] ✓ MCP Protocol service registered");
+        Console.Error.WriteLine("[Management RPC] Server now supports:");
+        Console.Error.WriteLine("[Management RPC]   - MCP methods: initialize, tools/list, tools/call");
+        Console.Error.WriteLine("[Management RPC]   - Management methods: CreateConnection, InstallPlugin, etc.");
     }
 
     // Connection management methods
@@ -42,158 +95,82 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
         return await _connectionService.GetWhoAmIAsync(connectionId);
     }
 
-    public Task CloseConnectionAsync(string connectionId)
+    public async Task CloseConnectionAsync(string connectionId)
     {
-        _connectionService.CloseConnection(connectionId);
-        return Task.CompletedTask;
+        await _connectionService.CloseConnectionAsync(connectionId);
     }
 
-    public Task CloseAllConnectionsAsync()
+    public async Task CloseAllConnectionsAsync()
     {
-        _connectionService.CloseAllConnections();
-        return Task.CompletedTask;
+        await _connectionService.CloseAllConnectionsAsync();
+    }
+
+    /// <summary>
+    /// Set the active connection for MCP tool executions
+    /// With unified instance, state is shared in-memory (no file persistence needed)
+    /// Optional: persists to file for recovery after restart
+    /// </summary>
+    public async Task SetActiveConnectionAsync(string connectionId)
+    {
+        _activeConnectionId = connectionId;
+        Console.Error.WriteLine($"[Management RPC] Active connection set to: {connectionId}");
+        
+        // Optional: Persist active connection for recovery after restart
+        await _connectionStateService.SetActiveConnectionAsync(connectionId);
+        Console.Error.WriteLine($"[Management RPC] Active connection persisted (optional - for restart recovery)");
+        
+        // Notify MCP protocol service of active connection change (in-memory, same instance)
+        _mcpProtocolService.SetActiveConnection(connectionId);
+        Console.Error.WriteLine($"[Management RPC] Active connection shared with MCP protocol service (in-memory)");
     }
 
     // Plugin management methods
     public async Task SetPluginDirectoryAsync(string directoryPath)
     {
-        Console.Error.WriteLine($"Setting plugin directory: {directoryPath}");
+        Console.Error.WriteLine($"[Management RPC] SetPluginDirectoryAsync called with: {directoryPath}");
+        Console.Error.WriteLine($"[Management RPC] Note: Plugin directory was already set to: {_pluginDirectory} at startup");
+        Console.Error.WriteLine($"[Management RPC] This method is kept for backward compatibility but is now a no-op");
         
-        _pluginDirectory = directoryPath;
-        _pluginPackageService = new PluginPackageService(directoryPath);
-        _pluginLoaderService = new PluginLoaderService(directoryPath);
-        _toolRegistryService = new ToolRegistryService();
-        _toolExecutionService = new ToolExecutionService(_toolRegistryService, _connectionService);
-
-        // Load existing plugins
-        await ReloadPluginsAsync();
+        // For backward compatibility, just reload plugins if directory matches
+        if (directoryPath == _pluginDirectory)
+        {
+            await _pluginManager.ReloadPluginsAsync();
+        }
+        else
+        {
+            Console.Error.WriteLine($"[Management RPC] WARNING: Requested directory '{directoryPath}' differs from initialized directory '{_pluginDirectory}'");
+            Console.Error.WriteLine($"[Management RPC] To change plugin directory, restart the server with DATAVERSE_MCP_PLUGIN_DIR environment variable");
+        }
     }
 
     public async Task<PluginInstallResult> InstallPluginAsync(PluginInstallRequest request)
     {
-        if (_pluginPackageService == null)
-        {
-            return new PluginInstallResult
-            {
-                Success = false,
-                ErrorMessage = "Plugin directory not set. Call SetPluginDirectoryAsync first."
-            };
-        }
-
-        Console.Error.WriteLine($"Installing plugin: {request.PackageId}");
-
-        var (success, errorMessage, installedPath) = await _pluginPackageService.InstallPluginAsync(
-            request.PackageId, 
-            request.Version);
-
-        if (!success)
-        {
-            return new PluginInstallResult
-            {
-                Success = false,
-                ErrorMessage = errorMessage
-            };
-        }
-
-        // Reload plugins to include the newly installed one
-        await ReloadPluginsAsync();
-
-        // Find the installed plugin info
-        var plugins = _toolRegistryService?.GetAllPlugins() ?? new List<PluginInfo>();
-        var installedPlugin = plugins.FirstOrDefault(p => 
-            p.Name.Contains(request.PackageId, StringComparison.OrdinalIgnoreCase));
-
-        return new PluginInstallResult
-        {
-            Success = true,
-            PluginInfo = installedPlugin
-        };
+        return await _pluginManager.InstallPluginAsync(request);
     }
 
     public Task<bool> UninstallPluginAsync(string packageId)
     {
-        if (_pluginPackageService == null)
-        {
-            Console.Error.WriteLine("Plugin directory not set");
-            return Task.FromResult(false);
-        }
-
-        Console.Error.WriteLine($"Uninstalling plugin: {packageId}");
-        
-        var result = _pluginPackageService.UninstallPlugin(packageId);
-        
-        if (result)
-        {
-            // Reload plugins to update registry
-            _ = ReloadPluginsAsync();
-        }
-
-        return Task.FromResult(result);
+        return _pluginManager.UninstallPluginAsync(packageId);
     }
 
-    public async Task ReloadPluginsAsync()
+    public Task ReloadPluginsAsync()
     {
-        if (_pluginLoaderService == null || _toolRegistryService == null)
-        {
-            Console.Error.WriteLine("Plugin services not initialized");
-            return;
-        }
-
-        Console.Error.WriteLine("Reloading plugins...");
-
-        // Load all plugins
-        var plugins = await _pluginLoaderService.LoadPluginsAsync();
-
-        // Register tools
-        _toolRegistryService.RegisterPlugins(plugins);
-
-        Console.Error.WriteLine($"Reloaded {plugins.Count} plugins with {_toolRegistryService.GetToolCount()} tools");
+        return _pluginManager.ReloadPluginsAsync();
     }
 
     public Task<List<PluginInfo>> ListPluginsAsync()
     {
-        if (_toolRegistryService == null)
-        {
-            Console.Error.WriteLine("Plugin services not initialized");
-            return Task.FromResult(new List<PluginInfo>());
-        }
-
-        var plugins = _toolRegistryService.GetAllPlugins();
-        Console.Error.WriteLine($"Listing {plugins.Count} plugins");
-        
-        return Task.FromResult(plugins);
+        return _pluginManager.GetAllPluginsAsync();
     }
 
     // Tool management methods
     public Task<List<ToolInfo>> ListToolsAsync()
     {
-        if (_toolRegistryService == null)
-        {
-            Console.Error.WriteLine("Plugin services not initialized");
-            return Task.FromResult(new List<ToolInfo>());
-        }
-
-        var tools = _toolRegistryService.GetAllTools();
-        Console.Error.WriteLine($"Listing {tools.Count} tools");
-        
-        return Task.FromResult(tools);
+        return _toolManager.GetAllToolsAsync();
     }
 
-    public async Task<ToolCallResult> CallToolAsync(ToolCallRequest request)
+    public Task<ToolCallResult> CallToolAsync(ToolCallRequest request)
     {
-        if (_toolExecutionService == null)
-        {
-            return new ToolCallResult
-            {
-                IsSuccess = false,
-                Error = new ToolErrorInfo
-                {
-                    Code = "SERVICE_NOT_INITIALIZED",
-                    Message = "Plugin services not initialized. Call SetPluginDirectoryAsync first."
-                }
-            };
-        }
-
-        return await _toolExecutionService.ExecuteToolAsync(request);
+        return _toolManager.ExecuteToolAsync(request);
     }
 }

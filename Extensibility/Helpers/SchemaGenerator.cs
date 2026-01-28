@@ -111,7 +111,9 @@ public static class SchemaGenerator
     /// <summary>
     /// Converts a string to camelCase format.
     /// </summary>
-    private static string ToCamelCase(string value)
+    /// <param name="value">The string to convert</param>
+    /// <returns>camelCase formatted string</returns>
+    public static string ToCamelCase(string value)
     {
         if (string.IsNullOrEmpty(value))
             return value;

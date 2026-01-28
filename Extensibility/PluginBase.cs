@@ -33,8 +33,26 @@ public abstract class PluginBase : IPlugin, IToolProvider
     public virtual Task InitializeAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
         Services = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-        Console.Error.WriteLine($"[{GetType().Name}] Plugin initialized");
+        LogInfo("Plugin initialized");
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Logs an error message with the plugin class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogError(string message)
+    {
+        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+    }
+
+    /// <summary>
+    /// Logs an informational message with the plugin class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogInfo(string message)
+    {
+        Console.Error.WriteLine($"[{GetType().Name}] {message}");
     }
 
     /// <summary>
@@ -66,7 +84,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
                 // Validate kebab-case
                 if (!SchemaGenerator.IsValidKebabCase(toolName))
                 {
-                    Console.Error.WriteLine($"[{GetType().Name}] Invalid tool name '{toolName}' for method {method.Name}. Tool names must be in kebab-case format. Skipping.");
+                    LogError($"Invalid tool name '{toolName}' for method {method.Name}. Tool names must be in kebab-case format. Skipping.");
                     continue;
                 }
 
@@ -77,11 +95,11 @@ public abstract class PluginBase : IPlugin, IToolProvider
                 var tool = new MethodTool(toolName, toolAttribute.Description, schema, method, this);
                 _tools.Add(tool);
 
-                Console.Error.WriteLine($"[{GetType().Name}] Registered tool: {toolName}");
+                LogInfo($"Registered tool: {toolName}");
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[{GetType().Name}] Error registering tool from method {method.Name}: {ex.Message}");
+                LogError($"Error registering tool from method {method.Name}: {ex.Message}");
             }
         }
 
@@ -97,7 +115,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
         if (_disposed)
             return;
 
-        Console.Error.WriteLine($"[{GetType().Name}] Plugin disposed");
+        LogInfo("Plugin disposed");
         _disposed = true;
         GC.SuppressFinalize(this);
     }
@@ -155,7 +173,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
                     else
                     {
                         // Extract from JSON (camelCase property name)
-                        var propertyName = ToCamelCase(param.Name ?? param.ParameterType.Name);
+                        var propertyName = SchemaGenerator.ToCamelCase(param.Name ?? param.ParameterType.Name);
                         var token = jsonObject[propertyName];
 
                         if (token != null)
@@ -210,17 +228,6 @@ public abstract class PluginBase : IPlugin, IToolProvider
             {
                 return ToolExecutionResult.Failure(ex);
             }
-        }
-
-        private static string ToCamelCase(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return value;
-
-            if (value.Length == 1)
-                return value.ToLowerInvariant();
-
-            return char.ToLowerInvariant(value[0]) + value.Substring(1);
         }
     }
 }

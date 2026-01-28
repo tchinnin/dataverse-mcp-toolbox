@@ -12,10 +12,12 @@ import { DataverseMCPToolBoxRpcClient } from './services/DataverseMCPToolBoxRpcC
 import { TokenStorageService } from './services/TokenStorageService';
 import { ServerManager } from './services/ServerManager';
 import { BundledPluginsConfig } from './models/BundledPluginConfig';
+import { MCPConfigurationService } from './services/MCPConfigurationService';
 
 // Global RPC client instance
 let rpcClient: DataverseMCPToolBoxRpcClient;
 let serverManager: ServerManager;
+let mcpConfigService: MCPConfigurationService;
 
 /**
  * Extension activation entry point
@@ -26,6 +28,8 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize storage services first
     const storageService = new ConnectionStorageService(context);
     const tokenStorageService = new TokenStorageService(context);
+
+    console.error('[Extension] Initializing Dataverse MCP Toolbox extension...');
 
     // CRITICAL: Deactivate all connections on startup to ensure fresh validation
     // This prevents stale connections from appearing as active with expired tokens
@@ -47,6 +51,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize ServerManager to manage server binary lifecycle
     serverManager = new ServerManager(context);
     context.subscriptions.push(serverManager);
+
+    // Initialize MCP Configuration Service
+    mcpConfigService = new MCPConfigurationService();
+    console.error('[Extension] MCP Configuration Service initialized');
 
     // Initialize RPC client
     rpcClient = new DataverseMCPToolBoxRpcClient();
@@ -84,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register all commands (they will check connection before use)
     registerCommands(context, storageService, tokenStorageService, treeDataProvider, rpcClient);
     registerPluginCommands(context, rpcClient, pluginsTreeProvider);
-    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider);
+    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpConfigService);
 
     // Register update server command
     context.subscriptions.push(
@@ -137,8 +145,38 @@ async function ensureServerAndConnect(context: vscode.ExtensionContext, pluginsT
 
     console.error(`[Extension] Server ready at: ${serverPath}`);
 
-    // Connect to RPC server
-    await rpcClient.connect(serverPath);
+    // Set up plugin directory in globalStoragePath (survives extension updates)
+    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+    console.error(`[Extension] Plugin directory: ${pluginDirectory}`);
+
+    // Ensure the plugins directory exists
+    if (!require('fs').existsSync(pluginDirectory)) {
+        require('fs').mkdirSync(pluginDirectory, { recursive: true });
+    }
+
+    // CONNECTION STATE SHARING ARCHITECTURE:
+    // 1. Extension RPC server (Content-Length protocol, no --mcp flag)
+    // 2. MCP RPC server (newline-delimited, with --mcp flag) - registered in mcp.json
+    // 3. Both servers share connection state via persisted connection file
+    //
+    // When Extension creates a connection, it:
+    // - Saves connection info to file system
+    // - Both Extension and MCP instances can read this file
+    // - Active connection is synchronized via file system
+    
+    // Register MCP server in VS Code global configuration
+    try {
+        await mcpConfigService.registerMcpServer(serverPath, pluginDirectory, false);
+        console.error('[Extension] Dataverse MCP server registered in VS Code MCP configuration');
+        console.error('[Extension] ℹ️  Reload VS Code to activate the MCP server for GitHub Copilot');
+        console.error('[Extension] ℹ️  Connection state shared via file system between instances');
+    } catch (error) {
+        console.error('[Extension] Failed to register MCP server in VS Code configuration:', error);
+        // Non-fatal error - extension can still function
+    }
+
+    // Connect to RPC server with plugin directory
+    await rpcClient.connect(serverPath, pluginDirectory);
     console.error('[Extension] Connected to Dataverse RPC server');
 
     // Close any lingering RPC connections from previous sessions
@@ -149,18 +187,9 @@ async function ensureServerAndConnect(context: vscode.ExtensionContext, pluginsT
         console.error('Error closing lingering connections:', error);
     }
 
-    // Set up plugin directory in globalStoragePath (survives extension updates)
-    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-    console.error(`[Extension] Setting plugin directory to: ${pluginDirectory}`);
-
-    // Ensure the plugins directory exists
-    if (!fs.existsSync(pluginDirectory)) {
-        fs.mkdirSync(pluginDirectory, { recursive: true });
-        console.error(`[Extension] Created plugins directory at: ${pluginDirectory}`);
-    }
-
+    // For backward compatibility, still call setPluginDirectory (now it's a no-op)
     await rpcClient.setPluginDirectory(pluginDirectory);
-    console.error(`[Extension] Plugin directory configured successfully`);
+    console.error(`[Extension] Plugin directory configured`);
 
     // Check if bundled plugins have been installed
     const bundledPluginsInstalled = context.globalState.get<boolean>('bundledPluginsInstalled', false);
@@ -184,6 +213,10 @@ async function ensureServerAndConnect(context: vscode.ExtensionContext, pluginsT
     console.error(`[Extension] Plugins loaded successfully - Found ${loadedPlugins.length} plugin(s)`);
     if (loadedPlugins.length > 0) {
         loadedPlugins.forEach(p => console.error(`[Extension]   - ${p.name} v${p.version} (${p.tools.length} tools)`));
+        
+        // Count total tools
+        const totalTools = loadedPlugins.reduce((sum, p) => sum + p.tools.length, 0);
+        console.error(`[Extension] ✓ Total ${totalTools} MCP tool(s) available via MCP protocol`);
     } else {
         console.error('[Extension] ⚠️ No plugins found! Check plugin directory and installation.');
     }
@@ -229,11 +262,8 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
 
                     // Reconnect with new version
                     progress.report({ message: 'Restarting server...' });
-                    await rpcClient.connect(newServerPath);
-
-                    // Reconfigure plugin directory
                     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-                    await rpcClient.setPluginDirectory(pluginDirectory);
+                    await rpcClient.connect(newServerPath, pluginDirectory);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();

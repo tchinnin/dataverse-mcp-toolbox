@@ -48,6 +48,9 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
         if (string.IsNullOrWhiteSpace(description))
             throw new ArgumentException("Tool description cannot be null or empty", nameof(description));
 
+        if (!SchemaGenerator.IsValidKebabCase(name))
+            throw new ArgumentException($"Tool name '{name}' must be in kebab-case format (e.g., 'list-entities', 'create-record')", nameof(name));
+
         // Enforce kebab-case naming convention
         if (!SchemaGenerator.IsValidKebabCase(name))
         {
@@ -125,9 +128,27 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[{GetType().Name}] Unexpected error in tool '{Name}': {ex}");
+            LogError($"Unexpected error in tool '{Name}': {ex}");
             return ToolExecutionResult.Failure(ex);
         }
+    }
+
+    /// <summary>
+    /// Logs an error message with the tool class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogError(string message)
+    {
+        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+    }
+
+    /// <summary>
+    /// Logs an informational message with the tool class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogInfo(string message)
+    {
+        Console.Error.WriteLine($"[{GetType().Name}] {message}");
     }
 
     /// <summary>
