@@ -16,6 +16,7 @@ export function registerPluginCommands(
             try {
                 await rpcClient.reloadPlugins();
                 await pluginsTreeProvider.loadPlugins();
+                
                 vscode.window.showInformationMessage('Plugins refreshed successfully');
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to refresh plugins: ${error}`);
@@ -70,6 +71,7 @@ export function registerPluginCommands(
                             progress.report({ increment: 100 });
                             console.log(`Plugin installed successfully: ${result.pluginInfo?.name}`);
                             await pluginsTreeProvider.loadPlugins();
+                            
                             vscode.window.showInformationMessage(
                                 `Plugin ${result.pluginInfo?.name} installed successfully in extension folder`
                             );
@@ -108,6 +110,7 @@ export function registerPluginCommands(
 
                 if (success) {
                     await pluginsTreeProvider.loadPlugins();
+                    
                     vscode.window.showInformationMessage(`Plugin ${item.plugin.name} uninstalled`);
                 } else {
                     vscode.window.showErrorMessage(`Failed to uninstall plugin ${item.plugin.name}`);

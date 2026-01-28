@@ -95,6 +95,14 @@ export function registerCommands(
                 // Set as active connection
                 await storageService.setActiveConnection(connection.id);
                 console.log(`New connection ${name} created and set as active`);
+                
+                // Notify RPC server of active connection for MCP
+                try {
+                    await rpcClient.setActiveConnection(connection.id);
+                    console.error(`[Commands] Active connection set in MCP server: ${connection.id}`);
+                } catch (error) {
+                    console.error('[Commands] Failed to set active connection in MCP server:', error);
+                }
 
                 return result;
             });
@@ -260,6 +268,19 @@ export function registerCommands(
                     // Set as active
                     await storageService.setActiveConnection(item.connection.id);
                     console.log(`${item.connection.name} is now the active connection`);
+                    
+                    // Notify RPC server of active connection for MCP
+                    // IMPORTANT: Use RPC connection ID (GUID from server), not local storage ID
+                    if (result.connectionId) {
+                        try {
+                            await rpcClient.setActiveConnection(result.connectionId);
+                            console.error(`[Commands] Active connection set in MCP server: ${result.connectionId}`);
+                        } catch (error) {
+                            console.error('[Commands] Failed to set active connection in MCP server:', error);
+                        }
+                    } else {
+                        console.error('[Commands] No RPC connection ID available, cannot set active connection in MCP server');
+                    }
                 });
 
                 vscode.window.showInformationMessage(`✅ "${item.connection.name}" is now active`);

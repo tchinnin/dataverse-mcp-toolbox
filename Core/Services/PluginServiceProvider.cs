@@ -5,7 +5,7 @@ namespace DataverseMCPToolBox.Services;
 /// <summary>
 /// Simple service provider implementation for plugin initialization
 /// </summary>
-public class PluginServiceProvider : IServiceProvider
+public class PluginServiceProvider : IServiceProvider, IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
 
@@ -22,5 +22,14 @@ public class PluginServiceProvider : IServiceProvider
     public object? GetService(Type serviceType)
     {
         return _serviceProvider.GetService(serviceType);
+    }
+
+    public void Dispose()
+    {
+        if (_serviceProvider is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+        GC.SuppressFinalize(this);
     }
 }

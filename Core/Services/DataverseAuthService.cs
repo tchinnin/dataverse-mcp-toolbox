@@ -69,26 +69,6 @@ public class DataverseAuthService
     }
 
     /// <summary>
-    /// Déconnecte tous les comptes en cache
-    /// </summary>
-    public async Task SignOutAsync()
-    {
-        var accounts = await _publicClientApp.GetAccountsAsync();
-        foreach (var account in accounts)
-        {
-            await _publicClientApp.RemoveAsync(account);
-        }
-    }
-
-    /// <summary>
-    /// Récupère les comptes en cache
-    /// </summary>
-    public async Task<IEnumerable<IAccount>> GetCachedAccountsAsync()
-    {
-        return await _publicClientApp.GetAccountsAsync();
-    }
-
-    /// <summary>
     /// Authentifie avec un token existant ou tente de le rafraîchir
     /// </summary>
     /// <param name="environmentUrl">URL de l'environnement Dataverse</param>

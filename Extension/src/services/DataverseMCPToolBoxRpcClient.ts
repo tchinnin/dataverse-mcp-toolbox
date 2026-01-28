@@ -1,7 +1,9 @@
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { MessageConnection, createMessageConnection, StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc/node';
+import { MessageConnection, createMessageConnection } from 'vscode-jsonrpc/node';
+import { NewlineDelimitedMessageReader } from '../utils/NewlineDelimitedMessageReader';
+import { NewlineDelimitedMessageWriter } from '../utils/NewlineDelimitedMessageWriter';
 import { ConnectionRequest, ConnectionResult, OrganizationDetail, WhoAmIResult } from '../models/RpcModels';
 import { PluginInfo } from '../models/PluginInfo';
 import { ToolInfo } from '../models/ToolInfo';
@@ -20,17 +22,30 @@ export class DataverseMCPToolBoxRpcClient {
     /**
      * Démarre le serveur .NET et établit la connexion JSON-RPC
      */
-    async connect(serverPath: string): Promise<void> {
+    async connect(serverPath: string, pluginDirectory?: string): Promise<void> {
         if (this.isConnected) {
             return;
         }
 
         try {
             console.error(`[RPC Client] Starting .NET RPC server from: ${serverPath}`);
+            if (pluginDirectory) {
+                console.error(`[RPC Client] Plugin directory: ${pluginDirectory}`);
+            }
 
-            // Démarrer le processus .NET (exécutable self-contained)
+            // Démarrer le processus .NET SANS flag --mcp pour Extension
+            // Pass plugin directory via environment variable
+            const env = { ...process.env };
+            if (pluginDirectory) {
+                env.DATAVERSE_MCP_PLUGIN_DIR = pluginDirectory;
+            }
+
+            // Extension uses Content-Length protocol (vscode-jsonrpc default)
+            // The MCP instance (launched by VS Code for Copilot) runs separately with --mcp flag
+            // Both instances share connection state via persisted connection file
             this.process = cp.spawn(serverPath, [], {
-                stdio: ['pipe', 'pipe', 'pipe']
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: env
             });
 
             if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
@@ -52,9 +67,11 @@ export class DataverseMCPToolBoxRpcClient {
                 this.isConnected = false;
             });
 
-            // Créer la connexion JSON-RPC avec encodage UTF-8 explicite
-            const reader = new StreamMessageReader(this.process.stdout, 'utf-8');
-            const writer = new StreamMessageWriter(this.process.stdin, 'utf-8');
+            // Créer la connexion JSON-RPC avec newline-delimited protocol
+            // IMPORTANT: Using newline-delimited JSON-RPC to match .NET's NewLineDelimitedMessageHandler
+            // This allows unified communication protocol between Extension and MCP (GitHub Copilot)
+            const reader = new NewlineDelimitedMessageReader(this.process.stdout);
+            const writer = new NewlineDelimitedMessageWriter(this.process.stdin);
             this.connection = createMessageConnection(reader, writer);
 
             // Debug: logger les messages envoyés et reçus
@@ -150,6 +167,15 @@ export class DataverseMCPToolBoxRpcClient {
     async closeAllConnections(): Promise<void> {
         this.ensureConnected();
         await this.connection!.sendRequest('CloseAllConnections');
+    }
+
+    /**
+     * Set the active connection for MCP tool executions
+     */
+    async setActiveConnection(connectionId: string): Promise<void> {
+        this.ensureConnected();
+        console.error(`[RPC Client] Setting active connection for MCP: ${connectionId}`);
+        await this.connection!.sendRequest('SetActiveConnection', { connectionId });
     }
 
     /**

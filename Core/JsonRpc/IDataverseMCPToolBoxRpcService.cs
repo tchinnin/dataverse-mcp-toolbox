@@ -14,6 +14,7 @@ public interface IDataverseMCPToolBoxRpcService
     Task<WhoAmIResult> GetWhoAmIAsync(string connectionId);
     Task CloseConnectionAsync(string connectionId);
     Task CloseAllConnectionsAsync();
+    Task SetActiveConnectionAsync(string connectionId);
 
     // Plugin management
     Task SetPluginDirectoryAsync(string directoryPath);
