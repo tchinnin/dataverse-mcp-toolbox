@@ -11,7 +11,7 @@ import type { DataverseMCPToolBoxRpcClient } from './DataverseMCPToolBoxRpcClien
  * Note: This class does NOT start the server - that's handled by GitHub Copilot via MCP configuration
  */
 export class ServerManager {
-    private static readonly PACKAGE_ID = 'DataverseMCPToolBox.Server';
+    private static readonly PACKAGE_ID = 'DataverseMCPToolBox.Runtime';
     private readonly context: vscode.ExtensionContext;
     private readonly outputChannel: vscode.OutputChannel;
     private rpcClient: DataverseMCPToolBoxRpcClient | null = null;
@@ -29,9 +29,62 @@ export class ServerManager {
     }
 
     /**
+     * Check if running in local development mode with bundled binaries
+     * Local dev binaries are in Extension/server/binaries/ (copied by install-local scripts)
+     */
+    private checkLocalDevBinaries(): string | null {
+        try {
+            const platform = this.getPlatform();
+            const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
+            
+            // Check Extension/server/binaries/runtimes/<platform>/native/
+            const localBinaryPath = path.join(
+                this.context.extensionPath,
+                'server',
+                'binaries',
+                'runtimes',
+                platform,
+                'native',
+                executableName
+            );
+            
+            if (fs.existsSync(localBinaryPath)) {
+                this.outputChannel.appendLine(`[Local Dev] Found local binary: ${localBinaryPath}`);
+                
+                // Verify Bridge is also present
+                const bridgeName = platform.startsWith('win') 
+                    ? 'DataverseMCPToolBox.Bridge.exe' 
+                    : 'DataverseMCPToolBox.Bridge';
+                const bridgePath = path.join(path.dirname(localBinaryPath), bridgeName);
+                
+                if (fs.existsSync(bridgePath)) {
+                    this.outputChannel.appendLine(`[Local Dev] Found Bridge: ${bridgePath}`);
+                    return localBinaryPath;
+                } else {
+                    this.outputChannel.appendLine(`[Local Dev] Warning: Core found but Bridge missing at ${bridgePath}`);
+                    this.outputChannel.appendLine(`[Local Dev] Run ./scripts/install-local.sh to install both binaries`);
+                }
+            }
+        } catch (error) {
+            // Silently fail - just means we're not in local dev mode
+            this.outputChannel.appendLine(`[Local Dev] Check skipped: ${error}`);
+        }
+        
+        return null;
+    }
+
+    /**
      * Ensure server is installed, download if necessary
      */
     async ensureServerInstalled(): Promise<string> {
+        // Check for local development binaries FIRST (F5 debugging)
+        const localBinary = this.checkLocalDevBinaries();
+        if (localBinary) {
+            this.outputChannel.appendLine('[Local Dev Mode] Using local binaries from Extension/server/binaries/');
+            return localBinary;
+        }
+
+        // Production mode: download from NuGet
         const config = vscode.workspace.getConfiguration('dataverse.server');
         const enforcedVersion = config.get<string>('enforcedVersion') || '';
 
@@ -228,24 +281,34 @@ export class ServerManager {
         const zip = new AdmZip(nupkgBuffer);
         zip.extractAllTo(tempDir, true);
 
-        // Copy platform-specific binary to final location
+        // Copy ALL platform-specific binaries to final location (Core + Bridge)
         const platform = this.getPlatform();
-        const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
-        
-        const sourcePath = path.join(tempDir, 'runtimes', platform, 'native', executableName);
+        const sourceDir = path.join(tempDir, 'runtimes', platform, 'native');
         const targetDir = path.join(this.context.globalStoragePath, 'server', version, platform);
-        const targetPath = path.join(targetDir, executableName);
 
-        if (!fs.existsSync(sourcePath)) {
-            throw new Error(`Platform binary not found in package: ${sourcePath}`);
+        if (!fs.existsSync(sourceDir)) {
+            throw new Error(`Platform binaries not found in package: ${sourceDir}`);
         }
 
         fs.mkdirSync(targetDir, { recursive: true });
-        fs.copyFileSync(sourcePath, targetPath);
 
-        // Set executable permissions on Unix
+        // Copy ALL files from native directory (Core Server + Bridge)
+        const files = fs.readdirSync(sourceDir);
+        for (const file of files) {
+            const sourcePath = path.join(sourceDir, file);
+            const targetPath = path.join(targetDir, file);
+            fs.copyFileSync(sourcePath, targetPath);
+            this.outputChannel.appendLine(`  Copied: ${file}`);
+        }
+
+        // Set executable permissions on Unix for ALL binaries
         if (!platform.startsWith('win')) {
-            fs.chmodSync(targetPath, 0o755);
+            for (const file of files) {
+                const targetPath = path.join(targetDir, file);
+                if (fs.statSync(targetPath).isFile()) {
+                    fs.chmodSync(targetPath, 0o755);
+                }
+            }
         }
 
         // Clean up temp directory

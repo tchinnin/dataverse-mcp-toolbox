@@ -53,16 +53,18 @@
     "views": {
       "dataverse-connections": [
         {
+          "id": "dataversemcptoolbox.serverInfoView",
+          "name": "MCP Server Info"
+        },
+        {
           "id": "dataverseConnectionsList",
-          "name": "Connections"
+          "name": "Connections",
+          "when": "dataversemcptoolbox.serverConnected"
         },
         {
           "id": "dataversemcptoolbox.pluginsView",
-          "name": "MCP Plugins"
-        },
-        {
-          "id": "dataversemcptoolbox.serverInfoView",
-          "name": "MCP Server Info"
+          "name": "MCP Plugins",
+          "when": "dataversemcptoolbox.serverConnected"
         }
       ]
     },
@@ -158,28 +160,38 @@
         "command": "dataversemcptoolbox.unregisterMcpServer",
         "title": "Dataverse: Unregister MCP Server",
         "icon": "$(close)"
+      },
+      {
+        "command": "dataversemcptoolbox.startServerManually",
+        "title": "Start Dataverse MCP Server",
+        "icon": "$(play)"
+      },
+      {
+        "command": "dataversemcptoolbox.showConnectionDiagnostics",
+        "title": "Show Connection Diagnostics",
+        "icon": "$(info)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "dataversemcptoolbox.addConnection",
-          "when": "view == dataverseConnectionsList",
+          "when": "view == dataverseConnectionsList && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.refreshConnections",
-          "when": "view == dataverseConnectionsList",
+          "when": "view == dataverseConnectionsList && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.refreshPlugins",
-          "when": "view == dataversemcptoolbox.pluginsView",
+          "when": "view == dataversemcptoolbox.pluginsView && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.installPlugin",
-          "when": "view == dataversemcptoolbox.pluginsView",
+          "when": "view == dataversemcptoolbox.pluginsView && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         }
       ],

@@ -257,10 +257,23 @@ export class DataverseMCPToolBoxRpcClient {
             this.pipeStream = null;
         }
 
-        // Optionally kill the server process if we started it
-        if (this.serverProcess) {
+        // Kill the server process if we started it
+        if (this.serverProcess && !this.serverProcess.killed) {
             console.error('[RPC Client] Terminating server process...');
-            this.serverProcess.kill();
+            try {
+                // Try graceful shutdown first
+                this.serverProcess.kill('SIGTERM');
+                
+                // Force kill if still running after 2 seconds
+                setTimeout(() => {
+                    if (this.serverProcess && !this.serverProcess.killed) {
+                        console.error('[RPC Client] Force killing server process...');
+                        this.serverProcess.kill('SIGKILL');
+                    }
+                }, 2000);
+            } catch (error) {
+                console.error('[RPC Client] Error killing server process:', error);
+            }
             this.serverProcess = null;
         }
 

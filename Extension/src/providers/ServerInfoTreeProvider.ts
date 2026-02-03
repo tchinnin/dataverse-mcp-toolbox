@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { ServerManager } from '../services/ServerManager';
 import { UpdateCheckResult } from '../models/ServerVersionInfo';
+import type { DataverseMCPToolBoxRpcClient } from '../services/DataverseMCPToolBoxRpcClient';
 
 /**
  * Tree item types for server info panel
  */
-type ServerInfoItem = VersionItem | ActionItem | SettingItem;
+type ServerInfoItem = VersionItem | ActionItem | SettingItem | StatusItem;
 
 /**
  * Version information tree item
@@ -73,6 +74,34 @@ class SettingItem extends vscode.TreeItem {
 }
 
 /**
+ * Status display tree item (for server connection status)
+ */
+class StatusItem extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly status: 'connected' | 'disconnected',
+        command?: vscode.Command
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        
+        if (status === 'connected') {
+            this.description = 'Running & Connected';
+            this.tooltip = 'Server is running and connected';
+            this.iconPath = new vscode.ThemeIcon('check-all', new vscode.ThemeColor('testing.iconPassed'));
+        } else {
+            this.description = 'Not Running';
+            this.tooltip = 'Click to start the server';
+            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+            if (command) {
+                this.command = command;
+            }
+        }
+        
+        this.contextValue = status === 'connected' ? 'statusConnected' : 'statusDisconnected';
+    }
+}
+
+/**
  * TreeDataProvider for displaying MCP Server information
  */
 export class ServerInfoTreeProvider implements vscode.TreeDataProvider<ServerInfoItem> {
@@ -81,8 +110,16 @@ export class ServerInfoTreeProvider implements vscode.TreeDataProvider<ServerInf
 
     private versionInfo: UpdateCheckResult | null = null;
     private isCheckingUpdate: boolean = false;
+    private rpcClient: DataverseMCPToolBoxRpcClient | null = null;
 
     constructor(private serverManager: ServerManager) {}
+
+    /**
+     * Set the RPC client for connection status checking
+     */
+    setRpcClient(client: DataverseMCPToolBoxRpcClient): void {
+        this.rpcClient = client;
+    }
 
     /**
      * Refresh the tree view
@@ -128,6 +165,22 @@ export class ServerInfoTreeProvider implements vscode.TreeDataProvider<ServerInf
         }
 
         const items: ServerInfoItem[] = [];
+
+        // CONNECTION STATUS - Always show at top
+        const isConnected = this.rpcClient?.isServerConnected() ?? false;
+        if (isConnected) {
+            items.push(new StatusItem('Server Status', 'connected'));
+        } else {
+            items.push(new StatusItem(
+                'Server Status',
+                'disconnected',
+                {
+                    command: 'dataversemcptoolbox.startServerManually',
+                    title: 'Start Server',
+                    arguments: []
+                }
+            ));
+        }
 
         // Load version info if not already loaded
         if (!this.versionInfo && !this.isCheckingUpdate) {

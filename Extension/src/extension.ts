@@ -98,6 +98,9 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(serverInfoTreeView);
 
+    // Set RPC client in server info provider for connection status
+    serverInfoProvider.setRpcClient(rpcClient);
+
     // Ensure server is installed and connect to it
     ensureServerAndConnect(context, treeDataProvider, pluginsTreeProvider, serverInfoProvider)
         .catch((error) => {
@@ -159,6 +162,55 @@ export async function activate(context: vscode.ExtensionContext) {
             } else if (selection.label.includes('Show Server Info')) {
                 vscode.commands.executeCommand('dataversemcptoolbox.serverInfoView.focus');
             }
+        })
+    );
+
+    // Register command to manually start server
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.startServerManually', async () => {
+            if (rpcClient.isServerConnected()) {
+                vscode.window.showInformationMessage('Server is already running and connected.');
+                return;
+            }
+
+            try {
+                await ensureServerAndConnect(context, treeDataProvider, pluginsTreeProvider, serverInfoProvider);
+                vscode.window.showInformationMessage('Server started successfully!');
+            } catch (error) {
+                console.error('Failed to start server manually:', error);
+                vscode.window.showErrorMessage(`Failed to start server: ${error}`);
+            }
+        })
+    );
+
+    // Register command to show connection diagnostics
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.showConnectionDiagnostics', async () => {
+            const isConnected = rpcClient.isServerConnected();
+            const pipeName = rpcClient.getPipeName();
+            
+            let message = `**Server Connection Diagnostics**\n\n`;
+            message += `Connection Status: ${isConnected ? '✅ Connected' : '❌ Disconnected'}\n`;
+            message += `Named Pipe: ${pipeName}\n`;
+            
+            if (isConnected) {
+                try {
+                    const plugins = await rpcClient.listPlugins();
+                    message += `\nPlugins Loaded: ${plugins.length}\n`;
+                    if (plugins.length > 0) {
+                        plugins.forEach(p => {
+                            message += `  - ${p.name} v${p.version} (${p.tools.length} tools)\n`;
+                        });
+                    }
+                } catch (error) {
+                    message += `\n⚠️ Error fetching plugin info: ${error}\n`;
+                }
+            } else {
+                message += `\n💡 The server should be started by GitHub Copilot via MCP provider.\n`;
+                message += `Try reloading VS Code to ensure MCP configuration is loaded.`;
+            }
+            
+            vscode.window.showInformationMessage(message, { modal: true });
         })
     );
 

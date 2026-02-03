@@ -79,13 +79,9 @@ export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeIt
      */
     async getChildren(element?: PluginTreeItem | vscode.TreeItem): Promise<Array<PluginTreeItem | vscode.TreeItem>> {
         if (!element) {
-            // Show warning if server not connected
+            // If server not connected, return empty array to hide the entire tree view
             if (!this.rpcClient.isServerConnected()) {
-                const warningItem = new vscode.TreeItem('⚠️ Server Not Running', vscode.TreeItemCollapsibleState.None);
-                warningItem.tooltip = 'The Dataverse MCP Server must be started by GitHub Copilot.\nClick the status bar to troubleshoot or reload VS Code.';
-                warningItem.description = 'Click status bar for help';
-                warningItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
-                return [warningItem];
+                return [];
             }
 
             // Root level: return plugins

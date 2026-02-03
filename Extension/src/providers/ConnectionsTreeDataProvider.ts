@@ -66,22 +66,15 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
             return [];
         }
 
-        const items: Array<ConnectionTreeItem | vscode.TreeItem> = [];
-
-        // Show warning if server is not connected
+        // If server is not connected, return empty array to hide the entire tree view
         if (this.rpcClient && !this.rpcClient.isServerConnected()) {
-            const warningItem = new vscode.TreeItem('⚠️ Server Not Running', vscode.TreeItemCollapsibleState.None);
-            warningItem.tooltip = 'The Dataverse MCP Server must be started by GitHub Copilot.\nClick the status bar to troubleshoot or reload VS Code.';
-            warningItem.description = 'Click status bar for help';
-            warningItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
-            warningItem.contextValue = 'serverWarning';
-            items.push(warningItem);
+            return [];
         }
 
         // Return all connections as root elements
         const connections = this.storageService.getConnections();
         
-        if (connections.length === 0 && items.length === 0) {
+        if (connections.length === 0) {
             // Return empty array, VSCode will show the welcome view
             return [];
         }
@@ -90,6 +83,6 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
             new ConnectionTreeItem(conn, vscode.TreeItemCollapsibleState.None)
         );
 
-        return [...items, ...connectionItems];
+        return connectionItems;
     }
 }
