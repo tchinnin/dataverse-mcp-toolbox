@@ -20,7 +20,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DataverseMCPToolBox.Extensibility" Version="0.1.0-alpha" />
+    <!-- Use ProjectReference for local development -->
+    <ProjectReference Include="../Extensibility/DataverseMCPToolBox.Extensibility.csproj" />
+    <!-- Use PackageReference when publishing to NuGet -->
+    <!-- <PackageReference Include="DataverseMCPToolBox.Extensibility" Version="0.1.0-alpha" /> -->
   </ItemGroup>
 
   <ItemGroup>

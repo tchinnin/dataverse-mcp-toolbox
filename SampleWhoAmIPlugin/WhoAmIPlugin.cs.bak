@@ -25,7 +25,7 @@ public class WhoAmIPlugin : PluginBase
     /// <param name="cancellationToken">Cancellation token for initialization</param>
     public override Task InitializeAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
-        LogInfo("Initializing WhoAmI Plugin v1.0.0");
+        Console.Error.WriteLine("[WhoAmIPlugin] Initializing WhoAmI Plugin v1.0.0");
         return base.InitializeAsync(serviceProvider, cancellationToken);
     }
 
@@ -52,7 +52,7 @@ public class WhoAmIPlugin : PluginBase
     /// </summary>
     public override void Dispose()
     {
-        LogInfo("Disposing WhoAmI Plugin");
+        Console.Error.WriteLine("[WhoAmIPlugin] Disposing WhoAmI Plugin");
         base.Dispose();
     }
 }
@@ -83,14 +83,14 @@ public class WhoAmITool : McpToolBase<object, WhoAmIOutput>
     {
         try
         {
-            LogInfo("Executing who-am-i tool");
+            Console.Error.WriteLine("[WhoAmITool] Executing who-am-i tool");
 
             // Execute WhoAmI request to get basic user information
             var whoAmIRequest = new WhoAmIRequest();
             var whoAmIResponse = (WhoAmIResponse)await context.ServiceClient
                 .ExecuteAsync(whoAmIRequest, cancellationToken);
 
-            LogInfo($"Retrieved user ID: {whoAmIResponse.UserId}");
+            Console.Error.WriteLine($"[WhoAmITool] Retrieved user ID: {whoAmIResponse.UserId}");
 
             // Retrieve the user's full name from the systemuser table
             string userDisplayName = "Unknown User";
@@ -103,11 +103,11 @@ public class WhoAmITool : McpToolBase<object, WhoAmIOutput>
                     cancellationToken);
 
                 userDisplayName = userEntity.GetAttributeValue<string>("fullname") ?? "Unknown User";
-                LogInfo($"Retrieved user display name: {userDisplayName}");
+                Console.Error.WriteLine($"[WhoAmITool] Retrieved user display name: {userDisplayName}");
             }
             catch (Exception ex)
             {
-                LogWarning($"Could not retrieve user display name: {ex.Message}");
+                Console.Error.WriteLine($"[WhoAmITool] Warning: Could not retrieve user display name: {ex.Message}");
                 // Continue with default display name
             }
 
@@ -122,7 +122,7 @@ public class WhoAmITool : McpToolBase<object, WhoAmIOutput>
                 Message = $"Successfully retrieved information for user '{userDisplayName}'"
             };
 
-            LogInfo($"Successfully completed who-am-i operation");
+            Console.Error.WriteLine($"[WhoAmITool] Successfully completed who-am-i operation");
             return output;
         }
         catch (ToolExecutionException)
@@ -132,16 +132,16 @@ public class WhoAmITool : McpToolBase<object, WhoAmIOutput>
         }
         catch (OperationCanceledException)
         {
-            LogInfo("Operation was cancelled");
+            Console.Error.WriteLine("[WhoAmITool] Operation was cancelled");
             throw new ToolExecutionException(
-                ErrorCodes.OperationCancelled,
+                "OPERATION_CANCELLED",
                 "The who-am-i operation was cancelled");
         }
         catch (Exception ex)
         {
-            LogError($"Error executing who-am-i: {ex.Message}");
+            Console.Error.WriteLine($"[WhoAmITool] Error executing who-am-i: {ex.Message}");
             throw new ToolExecutionException(
-                ErrorCodes.DataverseError,
+                "DATAVERSE_ERROR",
                 $"Failed to retrieve user information: {ex.Message}",
                 new { environmentUrl = context.OrganizationUrl },
                 ex);
