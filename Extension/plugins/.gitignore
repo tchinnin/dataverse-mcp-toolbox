@@ -1,6 +1,0 @@
-# Ignore all plugin installations
-*
-
-# But keep this directory structure
-!.gitignore
-!README.md
