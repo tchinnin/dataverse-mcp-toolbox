@@ -16,6 +16,7 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
     private bridgeExecutablePath: string | undefined;
     private pluginDirectory: string | undefined;
     private pipeName: string | undefined;
+    private socketDir: string | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -23,10 +24,11 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
      * Update the server configuration
      * Triggers onDidChangeMcpServerDefinitions to notify VS Code
      */
-    updateConfiguration(bridgePath: string, pluginDir: string, pipe: string): void {
+    updateConfiguration(bridgePath: string, pluginDir: string, pipe: string, socketDirectory: string): void {
         this.bridgeExecutablePath = bridgePath;
         this.pluginDirectory = pluginDir;
         this.pipeName = pipe;
+        this.socketDir = socketDirectory;
         
         // Notify VS Code that server definitions have changed
         this._onDidChangeMcpServerDefinitions.fire();
@@ -38,7 +40,7 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
      */
     provideMcpServerDefinitions(): vscode.ProviderResult<vscode.McpServerDefinition[]> {
         // If configuration not set yet, return empty array
-        if (!this.bridgeExecutablePath || !this.pluginDirectory || !this.pipeName) {
+        if (!this.bridgeExecutablePath || !this.pluginDirectory || !this.pipeName || !this.socketDir) {
             console.error('[MCP Provider] Configuration not ready yet');
             return [];
         }
@@ -53,6 +55,7 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
         console.error(`  - Bridge: ${this.bridgeExecutablePath}`);
         console.error(`  - Plugin Dir: ${this.pluginDirectory}`);
         console.error(`  - Pipe Name: ${this.pipeName}`);
+        console.error(`  - Socket Dir: ${this.socketDir}`);
 
         // Create stdio MCP server definition using constructor
         const serverDefinition = new vscode.McpStdioServerDefinition(
@@ -61,7 +64,8 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
             [],                        // args
             {                          // env
                 DATAVERSE_MCP_PLUGIN_DIR: this.pluginDirectory,
-                DATAVERSE_MCP_PIPE_NAME: this.pipeName
+                DATAVERSE_MCP_PIPE_NAME: this.pipeName,
+                TMPDIR: this.socketDir  // CRITICAL: Bridge must use same socket directory as Core Server
             }
         );
 

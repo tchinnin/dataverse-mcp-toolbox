@@ -21,6 +21,11 @@ let serverManager: ServerManager;
 let mcpProvider: McpServerDefinitionProvider;
 let serverStatusBar: vscode.StatusBarItem;
 
+// Socket directory for Named Pipes (Unix domain sockets)
+// Use os.tmpdir() for cross-platform temp directory (respects $TMPDIR on macOS)
+// Short path to respect 104-char Unix socket limit
+const SOCKET_DIR = path.join(os.tmpdir(), 'dvmcptb-sockets');
+
 /**
  * Extension activation entry point
  */
@@ -55,18 +60,15 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(serverManager);
 
     // Create socket directory for Named Pipes (Unix domain sockets)
-    // Use os.tmpdir() for cross-platform temp directory (respects $TMPDIR on macOS)
-    // Short path to respect 104-char Unix socket limit
-    const socketDir = path.join(os.tmpdir(), 'dvmcptb-sockets');
-    if (!fs.existsSync(socketDir)) {
-        fs.mkdirSync(socketDir, { recursive: true, mode: 0o755 });
-        console.error(`[Extension] Created socket directory: ${socketDir}`);
+    if (!fs.existsSync(SOCKET_DIR)) {
+        fs.mkdirSync(SOCKET_DIR, { recursive: true, mode: 0o755 });
+        console.error(`[Extension] Created socket directory: ${SOCKET_DIR}`);
     } else {
-        console.error(`[Extension] Socket directory exists: ${socketDir}`);
+        console.error(`[Extension] Socket directory exists: ${SOCKET_DIR}`);
     }
 
     // Cleanup old socket files (orphaned or > 24h old)
-    cleanupOldSockets(socketDir);
+    cleanupOldSockets(SOCKET_DIR);
 
     // Create output channel for server logs
     const serverOutputChannel = vscode.window.createOutputChannel('Dataverse MCP Server');
@@ -137,7 +139,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register all commands (they will check connection before use)
     registerCommands(context, storageService, tokenStorageService, treeDataProvider, rpcClient);
     registerPluginCommands(context, rpcClient, pluginsTreeProvider);
-    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpProvider);
+    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpProvider, SOCKET_DIR);
 
     // Register command to open server actions
     context.subscriptions.push(
@@ -326,15 +328,14 @@ async function ensureServerAndConnect(
     // The provider handles registration with VS Code's MCP infrastructure
     const pipeName = rpcClient.getPipeName();
     const bridgePath = getBridgePath(serverPath);
-    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName);
+    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, SOCKET_DIR);
     console.error('[Extension] MCP provider configuration updated');
 
     // Connect to RPC server (should be started by Copilot via MCP provider)
     try {
         const serverPath = await serverManager.ensureServerInstalled();
         const pluginDirectory = path.join(context.globalStorageUri.fsPath, 'plugins');
-        const socketDir = path.join(os.tmpdir(), 'dvmcptb-sockets');
-        await rpcClient.connect(serverPath, pluginDirectory, socketDir);
+        await rpcClient.connect(serverPath, pluginDirectory, SOCKET_DIR);
         console.error('[Extension] Connected to Dataverse RPC server');
         updateServerStatusBar(true);
         updateConnectionContext(true);
@@ -439,7 +440,7 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
                     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
                     const pipeName = rpcClient.getPipeName();
                     const bridgePath = getBridgePath(newServerPath);
-                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName);
+                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, SOCKET_DIR);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();

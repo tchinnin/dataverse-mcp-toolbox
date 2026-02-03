@@ -13,7 +13,8 @@ export function registerServerCommands(
     serverManager: ServerManager,
     rpcClient: DataverseMCPToolBoxRpcClient,
     serverInfoProvider: ServerInfoTreeProvider,
-    mcpProvider: McpServerDefinitionProvider
+    mcpProvider: McpServerDefinitionProvider,
+    socketDir: string
 ): void {
 
     // Command: Upgrade server to latest version
@@ -58,7 +59,7 @@ export function registerServerCommands(
                     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
                     const pipeName = rpcClient.getPipeName();
                     const bridgePath = getBridgePath(newServerPath);
-                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName);
+                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, socketDir);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();

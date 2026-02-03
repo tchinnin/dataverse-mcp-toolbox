@@ -35,16 +35,31 @@ class Program
             }
 
             Console.Error.WriteLine($"[Bridge] Target pipe: {pipeName}");
+            
+            // Log TMPDIR and expected socket path for diagnostics
+            string? tmpDir = Environment.GetEnvironmentVariable("TMPDIR");
+            Console.Error.WriteLine($"[Bridge] TMPDIR environment variable: {tmpDir ?? "(not set)"}");
+            
+            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
+            Console.Error.WriteLine($"[Bridge] Path.GetTempPath() returns: {tempPath}");
+            
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                // On Unix, NamedPipeClientStream adds "CoreFxPipe_" prefix
+                string expectedSocketPath = Path.Combine(tempPath, $"CoreFxPipe_{pipeName}");
+                Console.Error.WriteLine($"[Bridge] Expected Unix socket path: {expectedSocketPath}");
+            }
 
             // Create Named Pipe RPC client
             using var rpcClient = new NamedPipeRpcClient(pipeName, TimeSpan.FromSeconds(10));
 
-            // Connect to Core Server
+            // Connect to Core Server in RAW mode (no JSON-RPC initialization)
+            // This allows pure stream forwarding without conflict
             Console.Error.WriteLine("[Bridge] Connecting to Core Server...");
             try
             {
-                await rpcClient.ConnectAsync();
-                Console.Error.WriteLine("[Bridge] ✓ Connected to Core Server");
+                await rpcClient.ConnectRawAsync();
+                Console.Error.WriteLine("[Bridge] ✓ Connected to Core Server (RAW mode)");
             }
             catch (TimeoutException ex)
             {

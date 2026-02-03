@@ -52,6 +52,60 @@ public class NamedPipeRpcClient : IRpcClient, IDisposable
     public bool IsConnected => _pipeClient?.IsConnected ?? false;
 
     /// <summary>
+    /// Connect to the Named Pipe server in RAW mode (no JSON-RPC)
+    /// Use this for pure stream forwarding without JSON-RPC processing
+    /// </summary>
+    public async Task ConnectRawAsync(CancellationToken cancellationToken = default)
+    {
+        if (_pipeClient != null)
+        {
+            throw new InvalidOperationException("Client is already connected. Call DisconnectAsync() first.");
+        }
+
+        Console.Error.WriteLine($"[NamedPipeRpcClient] Connecting to pipe in RAW mode: {_pipeName}");
+
+        // Create pipe client
+        _pipeClient = new NamedPipeClientStream(
+            ".",                    // Server name (local machine)
+            _pipeName,              // Pipe name
+            PipeDirection.InOut,    // Bidirectional
+            PipeOptions.Asynchronous);
+
+        // Connect with timeout
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_connectionTimeout);
+
+        try
+        {
+            await _pipeClient.ConnectAsync(cts.Token);
+            Console.Error.WriteLine("[NamedPipeRpcClient] Connected successfully (RAW mode - no JSON-RPC)");
+            // NOTE: We deliberately do NOT initialize JSON-RPC in raw mode
+            // The pipe stream can be accessed directly via GetPipeStream()
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            _pipeClient.Dispose();
+            _pipeClient = null;
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Connection cancelled by caller", cancellationToken);
+            }
+
+            throw new TimeoutException(
+                $"Could not connect to Named Pipe '{_pipeName}' within {_connectionTimeout.TotalSeconds}s. " +
+                "Ensure the Core Server is running.");
+        }
+        catch (IOException ex)
+        {
+            _pipeClient.Dispose();
+            _pipeClient = null;
+            throw new InvalidOperationException($"Failed to connect to Named Pipe '{_pipeName}': {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
     /// Connect to the Named Pipe server
     /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)

@@ -18,7 +18,6 @@ public class NamedPipeRpcServer : IRpcServer
     private readonly List<Task> _clientTasks = new();
     private CancellationTokenSource? _cts;
     private Task? _acceptLoopTask;
-    private readonly JsonMessageFormatter _formatter;
 
     /// <summary>
     /// Create a Named Pipe RPC server
@@ -32,15 +31,6 @@ public class NamedPipeRpcServer : IRpcServer
         }
 
         _pipeName = pipeName;
-
-        // Configure JSON formatter with camelCase for TypeScript compatibility
-        _formatter = new JsonMessageFormatter
-        {
-            JsonSerializer =
-            {
-                ContractResolver = new CamelCasePropertyNamesContractResolver()
-            }
-        };
 
         Console.Error.WriteLine($"[NamedPipeRpcServer] Created with pipe name: {_pipeName}");
     }
@@ -225,8 +215,17 @@ public class NamedPipeRpcServer : IRpcServer
         {
             Console.Error.WriteLine($"[Client-{clientId}] Starting JSON-RPC session");
 
+            // Create a new JSON formatter for this client (each JsonRpc instance needs its own formatter)
+            var formatter = new JsonMessageFormatter
+            {
+                JsonSerializer =
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                }
+            };
+
             // Create message handler with newline-delimited protocol
-            var messageHandler = new NewLineDelimitedMessageHandler(pipeServer, pipeServer, _formatter);
+            var messageHandler = new NewLineDelimitedMessageHandler(pipeServer, pipeServer, formatter);
 
             using var jsonRpc = new StreamJsonRpc.JsonRpc(messageHandler);
 
