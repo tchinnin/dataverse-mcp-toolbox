@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "tchinnin",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.102.0"
   },
   "categories": [
     "Other",
@@ -16,6 +16,12 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "dataverseMcpToolbox",
+        "label": "Dataverse MCP Toolbox"
+      }
+    ],
     "configuration": {
       "title": "Dataverse MCP ToolBox",
       "properties": {
@@ -144,11 +150,6 @@
         "icon": "$(tag)"
       },
       {
-        "command": "dataversemcptoolbox.openMcpConfiguration",
-        "title": "Dataverse: Open MCP Configuration",
-        "icon": "$(file-code)"
-      },
-      {
         "command": "dataversemcptoolbox.reregisterMcpServer",
         "title": "Dataverse: Re-register MCP Server",
         "icon": "$(sync)"
@@ -228,7 +229,7 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/node": "18.x",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",

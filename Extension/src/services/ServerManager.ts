@@ -196,7 +196,7 @@ export class ServerManager {
 
     /**
      * Get path to server executable for installed version
-     * Used by MCPConfigurationService to register server in mcp.json
+     * Returns the path to the Core Server executable
      */
     getServerExecutablePath(version?: string): string {
         const actualVersion = version || this.getInstalledVersion();

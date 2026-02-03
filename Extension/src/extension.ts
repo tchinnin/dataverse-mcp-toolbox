@@ -12,12 +12,12 @@ import { DataverseMCPToolBoxRpcClient } from './services/DataverseMCPToolBoxRpcC
 import { TokenStorageService } from './services/TokenStorageService';
 import { ServerManager } from './services/ServerManager';
 import { BundledPluginsConfig } from './models/BundledPluginConfig';
-import { MCPConfigurationService } from './services/MCPConfigurationService';
+import { McpServerDefinitionProvider } from './providers/McpServerDefinitionProvider';
 
 // Global RPC client instance
 let rpcClient: DataverseMCPToolBoxRpcClient;
 let serverManager: ServerManager;
-let mcpConfigService: MCPConfigurationService;
+let mcpProvider: McpServerDefinitionProvider;
 let serverStatusBar: vscode.StatusBarItem;
 
 /**
@@ -53,12 +53,15 @@ export async function activate(context: vscode.ExtensionContext) {
     serverManager = new ServerManager(context);
     context.subscriptions.push(serverManager);
 
-    // Initialize MCP Configuration Service
-    mcpConfigService = new MCPConfigurationService();
-    console.error('[Extension] MCP Configuration Service initialized');
-
     // Initialize RPC client
     rpcClient = new DataverseMCPToolBoxRpcClient();
+
+    // Initialize MCP provider
+    mcpProvider = new McpServerDefinitionProvider(context);
+    const providerDisposable = vscode.lm.registerMcpServerDefinitionProvider('dataverseMcpToolbox', mcpProvider);
+    context.subscriptions.push(providerDisposable);
+    context.subscriptions.push(mcpProvider);
+    console.error('[Extension] MCP Server Definition Provider registered');
     
     // Create status bar item for server connection status
     serverStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -112,7 +115,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register all commands (they will check connection before use)
     registerCommands(context, storageService, tokenStorageService, treeDataProvider, rpcClient);
     registerPluginCommands(context, rpcClient, pluginsTreeProvider);
-    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpConfigService);
+    registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpProvider);
 
     // Register command to open server actions
     context.subscriptions.push(
@@ -123,12 +126,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 items.push({
                     label: '$(refresh) Reload VS Code',
                     description: 'Restart VS Code to let GitHub Copilot start the server',
-                    detail: 'The server should be automatically started by GitHub Copilot via MCP configuration'
-                });
-                items.push({
-                    label: '$(file-code) Open MCP Configuration',
-                    description: 'View or edit mcp.json',
-                    detail: mcpConfigService.getMcpConfigPath()
+                    detail: 'The server should be automatically started by GitHub Copilot via MCP provider'
                 });
                 items.push({
                     label: '$(output) Show Output',
@@ -156,8 +154,6 @@ export async function activate(context: vscode.ExtensionContext) {
             
             if (selection.label.includes('Reload VS Code')) {
                 await vscode.commands.executeCommand('workbench.action.reloadWindow');
-            } else if (selection.label.includes('Open MCP Configuration')) {
-                await vscode.commands.executeCommand('dataversemcptoolbox.openMcpConfiguration');
             } else if (selection.label.includes('Show Output')) {
                 vscode.commands.executeCommand('workbench.action.output.toggleOutput');
             } else if (selection.label.includes('Show Server Info')) {
@@ -202,6 +198,24 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 /**
+ * Get the Bridge executable path from the server path
+ * The Bridge executable is in the same directory as the Core server
+ */
+function getBridgePath(serverPath: string): string {
+    const serverDir = path.dirname(serverPath);
+    const platform = process.platform;
+    
+    let bridgeName: string;
+    if (platform === 'win32') {
+        bridgeName = 'DataverseMCPToolBox.Bridge.exe';
+    } else {
+        bridgeName = 'DataverseMCPToolBox.Bridge';
+    }
+    
+    return path.join(serverDir, bridgeName);
+}
+
+/**
  * Ensure server is installed and connect to it
  */
 async function ensureServerAndConnect(
@@ -237,31 +251,14 @@ async function ensureServerAndConnect(
         fs.mkdirSync(pluginDirectory, { recursive: true });
     }
 
-    // Register MCP server in VS Code global configuration
-    // This allows GitHub Copilot to start the server automatically
+    // Update MCP provider configuration
+    // The provider handles registration with VS Code's MCP infrastructure
     const pipeName = rpcClient.getPipeName();
-    const needsReload = await mcpConfigService.registerMcpServer(serverPath, pluginDirectory, pipeName, false);
-    console.error('[Extension] Dataverse MCP server registered in VS Code MCP configuration');
-    
-    if (needsReload) {
-        const selection = await vscode.window.showInformationMessage(
-            'Dataverse MCP Server has been registered. Please reload VS Code to activate the server for GitHub Copilot.',
-            'Reload Now',
-            'Later'
-        );
-        
-        if (selection === 'Reload Now') {
-            await vscode.commands.executeCommand('workbench.action.reloadWindow');
-            return; // Exit as window will reload
-        } else {
-            vscode.window.showWarningMessage(
-                'Dataverse MCP Server features will not be available until you reload VS Code.'
-            );
-            return; // Don't try to connect
-        }
-    }
+    const bridgePath = getBridgePath(serverPath);
+    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName);
+    console.error('[Extension] MCP provider configuration updated');
 
-    // Connect to RPC server (should be started by Copilot)
+    // Connect to RPC server (should be started by Copilot via MCP provider)
     try {
         const serverPath = await serverManager.ensureServerInstalled();
         const pluginDirectory = path.join(context.globalStorageUri.fsPath, 'plugins');
@@ -276,13 +273,10 @@ async function ensureServerAndConnect(
         vscode.window.showErrorMessage(
             'Could not connect to Dataverse MCP Server. The server should be started by GitHub Copilot. ' +
             'Try reloading VS Code to ensure MCP configuration is loaded.',
-            'Reload Now',
-            'Open MCP Config'
+            'Reload Now'
         ).then(selection => {
             if (selection === 'Reload Now') {
                 vscode.commands.executeCommand('workbench.action.reloadWindow');
-            } else if (selection === 'Open MCP Config') {
-                vscode.commands.executeCommand('dataversemcptoolbox.openMcpConfiguration');
             }
         });
         throw error;
@@ -369,10 +363,11 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
                     progress.report({ message: 'Downloading new version...' });
                     const newServerPath = await serverManager.upgradeServer();
 
-                    // Update MCP configuration with new path
+                    // Update MCP provider configuration with new path
                     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
                     const pipeName = rpcClient.getPipeName();
-                    await mcpConfigService.registerMcpServer(newServerPath, pluginDirectory, pipeName, false);
+                    const bridgePath = getBridgePath(newServerPath);
+                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();
