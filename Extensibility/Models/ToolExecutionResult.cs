@@ -55,16 +55,16 @@ public sealed class ToolExecutionResult
     /// Creates a failed tool execution result from an exception.
     /// </summary>
     /// <param name="exception">The exception that occurred</param>
-    /// <param name="code">Optional error code (defaults to "EXECUTION_ERROR")</param>
+    /// <param name="code">Optional error code (defaults to ErrorCodes.ExecutionError)</param>
     /// <returns>A failed ToolExecutionResult</returns>
-    public static ToolExecutionResult Failure(Exception exception, string code = "EXECUTION_ERROR")
+    public static ToolExecutionResult Failure(Exception exception, string? code = null)
     {
         return new ToolExecutionResult
         {
             IsSuccess = false,
             Error = new ToolError
             {
-                Code = code,
+                Code = code ?? ErrorCodes.ExecutionError,
                 Message = exception.Message,
                 Details = new
                 {

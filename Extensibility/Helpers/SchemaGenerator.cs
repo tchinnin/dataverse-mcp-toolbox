@@ -10,6 +10,12 @@ namespace DataverseMCPToolBox.Extensibility.Helpers;
 /// Utility class for generating JSON schemas from C# types and method signatures.
 /// Uses NJsonSchema with camelCase serialization matching the server conventions.
 /// </summary>
+/// <remarks>
+/// This class uses System.Text.Json for schema generation but the actual runtime
+/// serialization uses Newtonsoft.Json. Both are configured for camelCase to ensure
+/// compatibility. The dual serializer approach allows using NJsonSchema's excellent
+/// schema generation while maintaining compatibility with existing JSON-RPC infrastructure.
+/// </remarks>
 public static class SchemaGenerator
 {
     private static readonly JsonSchemaGenerator _schemaGenerator;
@@ -110,9 +116,16 @@ public static class SchemaGenerator
 
     /// <summary>
     /// Converts a string to camelCase format.
+    /// Assumes input follows C# naming conventions (letters, digits, underscores).
     /// </summary>
-    /// <param name="value">The string to convert</param>
+    /// <param name="value">The string to convert (expected to be PascalCase or valid C# identifier)</param>
     /// <returns>camelCase formatted string</returns>
+    /// <remarks>
+    /// This method performs basic camelCase conversion by lowercasing the first character.
+    /// It does not handle special characters, non-ASCII input, or complex transformations.
+    /// Input should be valid C# identifiers (letters, digits, underscores).
+    /// Examples: "MyProperty" → "myProperty", "ID" → "iD", "MyID" → "myID"
+    /// </remarks>
     public static string ToCamelCase(string value)
     {
         if (string.IsNullOrEmpty(value))
@@ -128,15 +141,21 @@ public static class SchemaGenerator
     /// Converts a PascalCase or camelCase string to kebab-case format.
     /// Used for tool name normalization.
     /// </summary>
-    /// <param name="value">The value to convert</param>
+    /// <param name="value">The value to convert (expected to be PascalCase/camelCase identifier)</param>
     /// <returns>kebab-case formatted string</returns>
+    /// <remarks>
+    /// Algorithm: Inserts a hyphen before each uppercase letter (except first character),
+    /// then converts entire string to lowercase.
+    /// Examples: "ListEntities" → "list-entities", "WhoAmI" → "who-am-i"
+    /// Optimized with StringBuilder capacity hint for typical use cases.
+    /// </remarks>
     public static string ToKebabCase(string value)
     {
         if (string.IsNullOrEmpty(value))
             return value;
 
-        // Insert hyphens before uppercase letters (except the first one)
-        var result = new System.Text.StringBuilder();
+        // Estimate capacity: original length + ~20% for hyphens
+        var result = new System.Text.StringBuilder(value.Length + (value.Length / 5));
         for (int i = 0; i < value.Length; i++)
         {
             char c = value[i];
@@ -152,9 +171,16 @@ public static class SchemaGenerator
 
     /// <summary>
     /// Validates that a tool name follows kebab-case convention.
+    /// Format: lowercase letters, numbers, and hyphens only.
+    /// Regex equivalent: ^[a-z0-9]+(-[a-z0-9]+)*$
     /// </summary>
     /// <param name="toolName">The tool name to validate</param>
     /// <returns>True if the name is valid kebab-case, false otherwise</returns>
+    /// <remarks>
+    /// Valid examples: "who-am-i", "list-entities", "create-record", "get-user-v2"
+    /// Invalid examples: "-tool" (starts with hyphen), "tool-" (ends with hyphen),
+    /// "tool--name" (consecutive hyphens), "Tool-Name" (uppercase), "tool_name" (underscore)
+    /// </remarks>
     public static bool IsValidKebabCase(string toolName)
     {
         if (string.IsNullOrWhiteSpace(toolName))

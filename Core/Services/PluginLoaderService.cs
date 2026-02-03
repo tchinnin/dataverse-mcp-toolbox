@@ -1,6 +1,7 @@
 using System.Reflection;
 using DataverseMCPToolBox.Extensibility;
 using DataverseMCPToolBox.Extensibility.Abstractions;
+using DataverseMCPToolBox.Helpers;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -9,6 +10,7 @@ namespace DataverseMCPToolBox.Services;
 /// </summary>
 public class PluginLoaderService
 {
+    private const string ServiceName = "PluginLoaderService";
     private readonly string _pluginDirectory;
     private readonly List<IPlugin> _loadedPlugins = new();
     private readonly Dictionary<string, Assembly> _loadedAssemblies = new();
@@ -28,11 +30,11 @@ public class PluginLoaderService
         _loadedPlugins.Clear();
         _loadedAssemblies.Clear();
 
-        Console.Error.WriteLine($"Loading plugins from: {_pluginDirectory}");
+        Logger.LogInfo(ServiceName, $"Loading plugins from: {_pluginDirectory}");
 
         if (!Directory.Exists(_pluginDirectory))
         {
-            Console.Error.WriteLine("Plugin directory does not exist");
+            Logger.LogWarning(ServiceName, "Plugin directory does not exist");
             return _loadedPlugins;
         }
 
@@ -41,7 +43,7 @@ public class PluginLoaderService
 
         foreach (var pluginDir in pluginDirs)
         {
-            Console.Error.WriteLine($"Scanning plugin directory: {pluginDir}");
+            Logger.LogInfo(ServiceName, $"Scanning plugin directory: {pluginDir}");
             
             // Find all DLL files
             var dllFiles = Directory.GetFiles(pluginDir, "*.dll", SearchOption.AllDirectories);
@@ -54,12 +56,12 @@ public class PluginLoaderService
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"Failed to load plugin from {dllFile}: {ex.Message}");
+                    Logger.LogException(ServiceName, ex, $"Failed to load plugin from {dllFile}");
                 }
             }
         }
 
-        Console.Error.WriteLine($"Loaded {_loadedPlugins.Count} plugins");
+        Logger.LogSuccess(ServiceName, $"Loaded {_loadedPlugins.Count} plugins");
         return _loadedPlugins;
     }
 
@@ -68,12 +70,12 @@ public class PluginLoaderService
     /// </summary>
     private async Task LoadPluginFromAssemblyAsync(string assemblyPath)
     {
-        Console.Error.WriteLine($"Loading assembly: {assemblyPath}");
+        Logger.LogInfo(ServiceName, $"Loading assembly: {assemblyPath}");
 
         // Skip if already loaded
         if (_loadedAssemblies.ContainsKey(assemblyPath))
         {
-            Console.Error.WriteLine($"Assembly already loaded: {assemblyPath}");
+            Logger.LogInfo(ServiceName, $"Assembly already loaded: {assemblyPath}");
             return;
         }
 
@@ -84,18 +86,33 @@ public class PluginLoaderService
             assembly = Assembly.LoadFrom(assemblyPath);
             _loadedAssemblies[assemblyPath] = assembly;
         }
+        catch (FileNotFoundException ex)
+        {
+            Logger.LogError(ServiceName, $"Assembly file not found: {ex.Message}");
+            return;
+        }
+        catch (BadImageFormatException ex)
+        {
+            Logger.LogError(ServiceName, $"Invalid assembly format (not a valid .NET assembly): {ex.Message}");
+            return;
+        }
+        catch (FileLoadException ex)
+        {
+            Logger.LogError(ServiceName, $"Assembly could not be loaded: {ex.Message}");
+            return;
+        }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Failed to load assembly: {ex.Message}");
+            Logger.LogException(ServiceName, ex, "Unexpected error loading assembly");
             return;
         }
 
-// Discover plugins in assembly using PluginManifest
-            var pluginManifests = PluginManifest.DiscoverPlugins(assembly);
+        // Discover plugins in assembly using PluginManifest
+        var pluginManifests = PluginManifest.DiscoverPlugins(assembly);
 
         if (!pluginManifests.Any())
         {
-            Console.Error.WriteLine($"No plugins found in assembly: {assemblyPath}");
+            Logger.LogInfo(ServiceName, $"No plugins found in assembly: {assemblyPath}");
             return;
         }
 
@@ -104,15 +121,15 @@ public class PluginLoaderService
         {
             try
             {
-                Console.Error.WriteLine($"Found plugin: {manifest.Name} v{manifest.Version} by {manifest.Author}");
-                Console.Error.WriteLine($"  Description: {manifest.Description}");
+                Logger.LogInfo(ServiceName, $"Found plugin: {manifest.Name} v{manifest.Version} by {manifest.Author}");
+                Logger.LogInfo(ServiceName, $"  Description: {manifest.Description}");
 
                 // Create instance
                 var pluginInstance = Activator.CreateInstance(manifest.PluginType) as IPlugin;
                 
                 if (pluginInstance == null)
                 {
-                    Console.Error.WriteLine($"Failed to create instance of plugin: {manifest.Name}");
+                    Logger.LogError(ServiceName, $"Failed to create instance of plugin: {manifest.Name}");
                     continue;
                 }
 
@@ -120,11 +137,11 @@ public class PluginLoaderService
                 await pluginInstance.InitializeAsync(_serviceProvider);
 
                 _loadedPlugins.Add(pluginInstance);
-                Console.Error.WriteLine($"Successfully loaded plugin: {manifest.Name}");
+                Logger.LogSuccess(ServiceName, $"Successfully loaded plugin: {manifest.Name}");
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Failed to instantiate plugin {manifest.Name}: {ex}");
+                Logger.LogException(ServiceName, ex, $"Failed to instantiate plugin {manifest.Name}");
             }
         }
     }

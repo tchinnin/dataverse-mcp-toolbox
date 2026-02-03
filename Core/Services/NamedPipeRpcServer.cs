@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using StreamJsonRpc;
 using Newtonsoft.Json.Serialization;
 using DataverseMCPToolBox.Abstractions;
+using DataverseMCPToolBox.Models;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -68,19 +69,19 @@ public class NamedPipeRpcServer : IRpcServer
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         Console.Error.WriteLine($"[NamedPipeRpcServer] Starting server on pipe: {_pipeName}");
-        Console.Error.WriteLine($"[NamedPipeRpcServer] Platform: {GetPlatformName()}");
+        Console.Error.WriteLine($"[NamedPipeRpcServer] Platform: {PlatformHelper.GetPlatformName()}");
         Console.Error.WriteLine($"[NamedPipeRpcServer] Registered services: {_services.Count}");
         
         // Log temp directory and expected socket path for diagnostics
         var tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
         Console.Error.WriteLine($"[NamedPipeRpcServer] Path.GetTempPath() = {tempPath}");
         
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (PlatformHelper.IsUnix)
         {
             // NamedPipeServerStream automatically adds "CoreFxPipe_" prefix on Unix
-            var expectedSocketPath = Path.Combine(tempPath, $"CoreFxPipe_{_pipeName}");
+            var expectedSocketPath = PipePathHelper.GetUnixSocketPath(_pipeName);
             Console.Error.WriteLine($"[NamedPipeRpcServer] Expected Unix socket path: {expectedSocketPath}");
-            Console.Error.WriteLine($"[NamedPipeRpcServer] Socket path length: {expectedSocketPath.Length} chars (limit: 104)");
+            Console.Error.WriteLine($"[NamedPipeRpcServer] Socket path length: {expectedSocketPath.Length} chars (limit: {NetworkConstants.UnixSocketPathLimit})");
         }
         
         Console.Error.WriteLine("========================================");
@@ -150,10 +151,9 @@ public class NamedPipeRpcServer : IRpcServer
                     PipeOptions.Asynchronous);
 
                 // Verify socket file was created on Unix
-                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                if (PlatformHelper.IsUnix)
                 {
-                    var tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
-                    var socketPath = Path.Combine(tempPath, $"CoreFxPipe_{_pipeName}");
+                    var socketPath = PipePathHelper.GetUnixSocketPath(_pipeName);
                     var socketExists = File.Exists(socketPath);
                     Console.Error.WriteLine($"[NamedPipeRpcServer] Socket file created: {socketPath}");
                     Console.Error.WriteLine($"[NamedPipeRpcServer] Socket file exists: {socketExists}");
@@ -179,7 +179,7 @@ public class NamedPipeRpcServer : IRpcServer
                     pipeServer.Dispose();
                     
                     // Wait a bit before retrying
-                    await Task.Delay(1000, cancellationToken);
+                    await Task.Delay(NetworkConstants.RetryDelayMs, cancellationToken);
                     continue;
                 }
 
@@ -216,13 +216,7 @@ public class NamedPipeRpcServer : IRpcServer
             Console.Error.WriteLine($"[Client-{clientId}] Starting JSON-RPC session");
 
             // Create a new JSON formatter for this client (each JsonRpc instance needs its own formatter)
-            var formatter = new JsonMessageFormatter
-            {
-                JsonSerializer =
-                {
-                    ContractResolver = new CamelCasePropertyNamesContractResolver()
-                }
-            };
+            var formatter = JsonFormatterFactory.CreateCamelCaseFormatter();
 
             // Create message handler with newline-delimited protocol
             var messageHandler = new NewLineDelimitedMessageHandler(pipeServer, pipeServer, formatter);
@@ -254,29 +248,6 @@ public class NamedPipeRpcServer : IRpcServer
         {
             pipeServer.Dispose();
             Console.Error.WriteLine($"[Client-{clientId}] Connection closed");
-        }
-    }
-
-    /// <summary>
-    /// Get platform name for logging
-    /// </summary>
-    private static string GetPlatformName()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return "Windows";
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            return "macOS";
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return "Linux";
-        }
-        else
-        {
-            return "Unknown";
         }
     }
 }

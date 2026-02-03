@@ -33,7 +33,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
     public virtual Task InitializeAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
         Services = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-        LogInfo("Plugin initialized");
+        Logger.LogSuccess(GetType().Name, "Plugin initialized");
         return Task.CompletedTask;
     }
 
@@ -43,7 +43,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
     /// <param name="message">The message to log</param>
     protected void LogError(string message)
     {
-        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+        Logger.LogError(GetType().Name, message);
     }
 
     /// <summary>
@@ -52,7 +52,16 @@ public abstract class PluginBase : IPlugin, IToolProvider
     /// <param name="message">The message to log</param>
     protected void LogInfo(string message)
     {
-        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+        Logger.LogInfo(GetType().Name, message);
+    }
+
+    /// <summary>
+    /// Logs a warning message with the plugin class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogWarning(string message)
+    {
+        Logger.LogWarning(GetType().Name, message);
     }
 
     /// <summary>
@@ -95,11 +104,11 @@ public abstract class PluginBase : IPlugin, IToolProvider
                 var tool = new MethodTool(toolName, toolAttribute.Description, schema, method, this);
                 _tools.Add(tool);
 
-                LogInfo($"Registered tool: {toolName}");
+                Logger.LogSuccess(GetType().Name, $"Registered tool: {toolName}");
             }
             catch (Exception ex)
             {
-                LogError($"Error registering tool from method {method.Name}: {ex.Message}");
+                Logger.LogException(GetType().Name, ex, $"Error registering tool from method {method.Name}");
             }
         }
 
@@ -115,7 +124,11 @@ public abstract class PluginBase : IPlugin, IToolProvider
         if (_disposed)
             return;
 
-        LogInfo("Plugin disposed");
+        // Clear tools list to release references
+        _tools?.Clear();
+        _tools = null;
+
+        Logger.LogInfo(GetType().Name, "Plugin disposed");
         _disposed = true;
         GC.SuppressFinalize(this);
     }
@@ -188,7 +201,7 @@ public abstract class PluginBase : IPlugin, IToolProvider
                         {
                             return ToolExecutionResult.Failure(new ToolError
                             {
-                                Code = "VALIDATION_ERROR",
+                                Code = ErrorCodes.ValidationError,
                                 Message = $"Required parameter '{propertyName}' is missing"
                             });
                         }
@@ -223,6 +236,14 @@ public abstract class PluginBase : IPlugin, IToolProvider
             catch (TargetInvocationException ex)
             {
                 return ToolExecutionResult.Failure(ex.InnerException ?? ex);
+            }
+            catch (OperationCanceledException)
+            {
+                return ToolExecutionResult.Failure(new ToolError
+                {
+                    Code = ErrorCodes.OperationCancelled,
+                    Message = "Tool execution was cancelled"
+                });
             }
             catch (Exception ex)
             {

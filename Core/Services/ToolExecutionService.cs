@@ -1,6 +1,7 @@
 using DataverseMCPToolBox.Extensibility.Abstractions;
 using DataverseMCPToolBox.Extensibility.Models;
 using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Newtonsoft.Json;
 
@@ -11,6 +12,7 @@ namespace DataverseMCPToolBox.Services;
 /// </summary>
 public class ToolExecutionService
 {
+    private const string ServiceName = "ToolExecutionService";
     private readonly ToolRegistryService _toolRegistry;
     private readonly DataverseConnectionService _connectionService;
 
@@ -26,72 +28,37 @@ public class ToolExecutionService
     public async Task<ToolCallResult> ExecuteToolAsync(ToolCallRequest request)
     {
         // Validate request
-        var (isValid, error) = InputValidator.ValidateToolCallRequest(request);
-        if (!isValid)
+        var validation = InputValidator.ValidateToolCallRequest(request);
+        if (!validation.IsValid)
         {
-            Console.Error.WriteLine($"[ToolExecutionService] Validation failed: {error}");
-            return new ToolCallResult
-            {
-                IsSuccess = false,
-                Error = new ToolErrorInfo
-                {
-                    Code = "VALIDATION_ERROR",
-                    Message = error!
-                }
-            };
+            Logger.LogError(ServiceName, $"Validation failed: {validation.Error}");
+            return ToolCallResult.ValidationError(validation.Error!);
         }
 
         try
         {
-            Console.Error.WriteLine($"Executing tool: {request.ToolName} with connection: {request.ConnectionId}");
+            Logger.LogInfo(ServiceName, $"Executing tool: {request.ToolName} with connection: {request.ConnectionId}");
 
             // Lookup tool
             var (plugin, tool) = _toolRegistry.GetTool(request.ToolName);
             if (tool == null || plugin == null)
             {
-                return new ToolCallResult
-                {
-                    IsSuccess = false,
-                    Error = new ToolErrorInfo
-                    {
-                        Code = "TOOL_NOT_FOUND",
-                        Message = $"Tool '{request.ToolName}' not found"
-                    }
-                };
+                return ToolCallResult.ToolNotFound(request.ToolName);
             }
 
             // Get connection
             var serviceClient = _connectionService.GetConnection(request.ConnectionId);
-            if (serviceClient == null)
+            
+            // Validate connection
+            var connectionError = ConnectionHelper.ValidateConnection(serviceClient, request.ConnectionId);
+            if (connectionError != null)
             {
-                return new ToolCallResult
-                {
-                    IsSuccess = false,
-                    Error = new ToolErrorInfo
-                    {
-                        Code = "CONNECTION_NOT_FOUND",
-                        Message = $"Connection '{request.ConnectionId}' not found"
-                    }
-                };
-            }
-
-            // Verify connection is ready
-            if (!serviceClient.IsReady)
-            {
-                return new ToolCallResult
-                {
-                    IsSuccess = false,
-                    Error = new ToolErrorInfo
-                    {
-                        Code = "CONNECTION_NOT_READY",
-                        Message = $"Connection '{request.ConnectionId}' is not ready or has been disconnected"
-                    }
-                };
+                return connectionError;
             }
 
             // Create connection context
             var context = new ConnectionContext(
-                serviceClient,
+                serviceClient!,
                 request.ConnectionId,
                 serviceClient.ConnectedOrgUriActual?.ToString() ?? string.Empty,
                 CancellationToken.None
@@ -103,44 +70,23 @@ public class ToolExecutionService
             // Convert to ToolCallResult
             if (executionResult.IsSuccess)
             {
-                Console.Error.WriteLine($"Tool executed successfully: {request.ToolName}");
-                
-                return new ToolCallResult
-                {
-                    IsSuccess = true,
-                    Content = executionResult.Content
-                };
+                Logger.LogSuccess(ServiceName, $"Tool executed: {request.ToolName}");
+                return ToolCallResult.Success(executionResult.Content);
             }
             else
             {
-                Console.Error.WriteLine($"Tool execution failed: {executionResult.Error?.Message}");
-                
-                return new ToolCallResult
-                {
-                    IsSuccess = false,
-                    Error = new ToolErrorInfo
-                    {
-                        Code = executionResult.Error?.Code ?? "EXECUTION_ERROR",
-                        Message = executionResult.Error?.Message ?? "Unknown error",
-                        Details = executionResult.Error?.Details
-                    }
-                };
+                Logger.LogError(ServiceName, $"Tool execution failed: {executionResult.Error?.Message}");
+                return ToolCallResult.Failure(
+                    executionResult.Error?.Code ?? ErrorCodes.ExecutionError,
+                    executionResult.Error?.Message ?? "Unknown error",
+                    executionResult.Error?.Details
+                );
             }
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error executing tool: {ex}");
-            
-            return new ToolCallResult
-            {
-                IsSuccess = false,
-                Error = new ToolErrorInfo
-                {
-                    Code = "EXECUTION_EXCEPTION",
-                    Message = ex.Message,
-                    Details = ex.StackTrace
-                }
-            };
+            Logger.LogException(ServiceName, ex, "Error executing tool");
+            return ToolCallResult.ExecutionException(ex);
         }
     }
 }

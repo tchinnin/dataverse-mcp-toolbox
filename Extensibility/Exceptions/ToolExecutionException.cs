@@ -4,10 +4,15 @@ namespace DataverseMCPToolBox.Extensibility.Exceptions;
 /// Exception thrown when a tool execution fails.
 /// Provides structured error information that can be serialized and returned to the MCP client.
 /// </summary>
+/// <remarks>
+/// Use constants from <see cref="DataverseMCPToolBox.Extensibility.ErrorCodes"/> for the error code parameter.
+/// This exception is caught by the framework and converted to a ToolExecutionResult automatically.
+/// </remarks>
 public class ToolExecutionException : Exception
 {
     /// <summary>
     /// Gets the error code identifying the type of failure.
+    /// Should use constants from <see cref="DataverseMCPToolBox.Extensibility.ErrorCodes"/>.
     /// </summary>
     public string ErrorCode { get; }
 

@@ -115,24 +115,6 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
     }
 
     // Plugin management methods
-    public async Task SetPluginDirectoryAsync(string directoryPath)
-    {
-        Console.Error.WriteLine($"[Management RPC] SetPluginDirectoryAsync called with: {directoryPath}");
-        Console.Error.WriteLine($"[Management RPC] Note: Plugin directory was already set to: {_pluginDirectory} at startup");
-        Console.Error.WriteLine($"[Management RPC] This method is kept for backward compatibility but is now a no-op");
-        
-        // For backward compatibility, just reload plugins if directory matches
-        if (directoryPath == _pluginDirectory)
-        {
-            await _pluginManager.ReloadPluginsAsync();
-        }
-        else
-        {
-            Console.Error.WriteLine($"[Management RPC] WARNING: Requested directory '{directoryPath}' differs from initialized directory '{_pluginDirectory}'");
-            Console.Error.WriteLine($"[Management RPC] To change plugin directory, restart the server with DATAVERSE_MCP_PLUGIN_DIR environment variable");
-        }
-    }
-
     public async Task<PluginInstallResult> InstallPluginAsync(PluginInstallRequest request)
     {
         return await _pluginManager.InstallPluginAsync(request);

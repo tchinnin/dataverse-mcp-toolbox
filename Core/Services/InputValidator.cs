@@ -5,83 +5,83 @@ namespace DataverseMCPToolBox.Services;
 
 /// <summary>
 /// Service for validating request inputs
+/// All validation methods return ValidationResult for consistent error handling
 /// </summary>
-public static class InputValidator
+public static partial class InputValidator
 {
-    private static readonly Regex UrlRegex = new Regex(
-        @"^https?://[a-zA-Z0-9\-\.]+\.(?:crm\d*|dynamics)\.com/?$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"^https?://[a-zA-Z0-9\-\.]+\.(?:crm\d*|dynamics)\.com/?$", RegexOptions.IgnoreCase)]
+    private static partial Regex UrlRegex();
 
     /// <summary>
     /// Validate a connection request
     /// </summary>
-    public static (bool IsValid, string? Error) ValidateConnectionRequest(ConnectionRequest request)
+    public static ValidationResult ValidateConnectionRequest(ConnectionRequest request)
     {
         if (request == null)
         {
-            return (false, "Connection request cannot be null");
+            return ValidationResult.Failure("Connection request cannot be null");
         }
 
         if (string.IsNullOrWhiteSpace(request.EnvironmentUrl))
         {
-            return (false, "Environment URL is required");
+            return ValidationResult.Failure("Environment URL is required");
         }
 
         if (!Uri.TryCreate(request.EnvironmentUrl, UriKind.Absolute, out var uri))
         {
-            return (false, "Environment URL is not a valid URI");
+            return ValidationResult.Failure("Environment URL is not a valid URI");
         }
 
         if (!uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "Environment URL must use HTTPS protocol");
+            return ValidationResult.Failure("Environment URL must use HTTPS protocol");
         }
 
-        if (!UrlRegex.IsMatch(request.EnvironmentUrl))
+        if (!UrlRegex().IsMatch(request.EnvironmentUrl))
         {
-            return (false, "Environment URL must be a valid Dataverse URL (*.crm.dynamics.com or *.crm[N].dynamics.com)");
+            return ValidationResult.Failure("Environment URL must be a valid Dataverse URL (*.crm.dynamics.com or *.crm[N].dynamics.com)");
         }
 
-        return (true, null);
+        return ValidationResult.Success();
     }
 
     /// <summary>
     /// Validate a connection ID
     /// </summary>
-    public static (bool IsValid, string? Error) ValidateConnectionId(string? connectionId)
+    public static ValidationResult ValidateConnectionId(string? connectionId)
     {
         if (string.IsNullOrWhiteSpace(connectionId))
         {
-            return (false, "Connection ID is required");
+            return ValidationResult.Failure("Connection ID is required");
         }
 
         if (!Guid.TryParse(connectionId, out _))
         {
-            return (false, "Connection ID must be a valid GUID");
+            return ValidationResult.Failure("Connection ID must be a valid GUID");
         }
 
-        return (true, null);
+        return ValidationResult.Success();
     }
 
     /// <summary>
     /// Validate a plugin install request
     /// </summary>
-    public static (bool IsValid, string? Error) ValidatePluginInstallRequest(PluginInstallRequest request)
+    public static ValidationResult ValidatePluginInstallRequest(PluginInstallRequest request)
     {
         if (request == null)
         {
-            return (false, "Plugin install request cannot be null");
+            return ValidationResult.Failure("Plugin install request cannot be null");
         }
 
         if (string.IsNullOrWhiteSpace(request.PackageId))
         {
-            return (false, "Package ID is required");
+            return ValidationResult.Failure("Package ID is required");
         }
 
         // Package ID should follow NuGet naming conventions
         if (!Regex.IsMatch(request.PackageId, @"^[A-Za-z0-9\.\-]+$"))
         {
-            return (false, "Package ID contains invalid characters. Only alphanumeric, dots, and hyphens are allowed");
+            return ValidationResult.Failure("Package ID contains invalid characters. Only alphanumeric, dots, and hyphens are allowed");
         }
 
         // Validate version format if provided
@@ -89,79 +89,79 @@ public static class InputValidator
         {
             if (!Regex.IsMatch(request.Version, @"^\d+\.\d+\.\d+(-[A-Za-z0-9\-\.]+)?$"))
             {
-                return (false, "Version must be in format X.Y.Z or X.Y.Z-prerelease (e.g., 1.0.0 or 1.0.0-alpha)");
+                return ValidationResult.Failure("Version must be in format X.Y.Z or X.Y.Z-prerelease (e.g., 1.0.0 or 1.0.0-alpha)");
             }
         }
 
-        return (true, null);
+        return ValidationResult.Success();
     }
 
     /// <summary>
     /// Validate a tool call request
     /// </summary>
-    public static (bool IsValid, string? Error) ValidateToolCallRequest(ToolCallRequest request)
+    public static ValidationResult ValidateToolCallRequest(ToolCallRequest request)
     {
         if (request == null)
         {
-            return (false, "Tool call request cannot be null");
+            return ValidationResult.Failure("Tool call request cannot be null");
         }
 
         if (string.IsNullOrWhiteSpace(request.ToolName))
         {
-            return (false, "Tool name is required");
+            return ValidationResult.Failure("Tool name is required");
         }
 
         if (string.IsNullOrWhiteSpace(request.ConnectionId))
         {
-            return (false, "Connection ID is required");
+            return ValidationResult.Failure("Connection ID is required");
         }
 
-        var (isValidId, idError) = ValidateConnectionId(request.ConnectionId);
-        if (!isValidId)
+        var connectionIdValidation = ValidateConnectionId(request.ConnectionId);
+        if (!connectionIdValidation.IsValid)
         {
-            return (false, $"Invalid connection ID: {idError}");
+            return ValidationResult.Failure($"Invalid connection ID: {connectionIdValidation.Error}");
         }
 
-        return (true, null);
+        return ValidationResult.Success();
     }
 
     /// <summary>
     /// Validate a directory path
     /// </summary>
-    public static (bool IsValid, string? Error) ValidateDirectoryPath(string? path)
+    public static ValidationResult ValidateDirectoryPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            return (false, "Directory path is required");
+            return ValidationResult.Failure("Directory path is required");
         }
 
         try
         {
             // Check if path is valid
             _ = Path.GetFullPath(path);
-            return (true, null);
+            return ValidationResult.Success();
         }
         catch (Exception ex)
         {
-            return (false, $"Invalid directory path: {ex.Message}");
+            return ValidationResult.Failure($"Invalid directory path: {ex.Message}");
         }
     }
 
     /// <summary>
     /// Validate a package ID for uninstallation
     /// </summary>
-    public static (bool IsValid, string? Error) ValidatePackageId(string? packageId)
+    public static ValidationResult ValidatePackageId(string? packageId)
     {
         if (string.IsNullOrWhiteSpace(packageId))
         {
-            return (false, "Package ID is required");
+            return ValidationResult.Failure("Package ID is required");
         }
 
         if (!Regex.IsMatch(packageId, @"^[A-Za-z0-9\.\-]+$"))
         {
-            return (false, "Package ID contains invalid characters");
+            return ValidationResult.Failure("Package ID contains invalid characters");
         }
 
-        return (true, null);
+        return ValidationResult.Success();
     }
 }

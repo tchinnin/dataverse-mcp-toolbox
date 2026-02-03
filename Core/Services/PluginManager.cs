@@ -1,5 +1,6 @@
 using DataverseMCPToolBox.Extensibility.Abstractions;
 using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -8,6 +9,7 @@ namespace DataverseMCPToolBox.Services;
 /// </summary>
 public class PluginManager : IPluginManager
 {
+    private const string ServiceName = "PluginManager";
     private PluginPackageService? _packageService;
     private PluginLoaderService? _loaderService;
     private ToolRegistryService? _registryService;
@@ -19,22 +21,23 @@ public class PluginManager : IPluginManager
     public Task InitializeAsync(string pluginDirectory)
     {
         // Validate directory path
-        var (isValid, error) = InputValidator.ValidateDirectoryPath(pluginDirectory);
-        if (!isValid)
+        var validation = InputValidator.ValidateDirectoryPath(pluginDirectory);
+        if (!validation.IsValid)
         {
-            Console.Error.WriteLine($"[PluginManager] Validation failed: {error}");
-            throw new ArgumentException(error, nameof(pluginDirectory));
+            Logger.LogError(ServiceName, $"Validation failed: {validation.Error}");
+            throw new ArgumentException(validation.Error, nameof(pluginDirectory));
         }
 
-        Console.Error.WriteLine($"[PluginManager] Initializing with directory: {pluginDirectory}");
+        Logger.LogInfo(ServiceName, $"Initializing with directory: {pluginDirectory}");
         
         _pluginDirectory = pluginDirectory;
         _packageService = new PluginPackageService(pluginDirectory);
         _loaderService = new PluginLoaderService(pluginDirectory);
         _registryService = new ToolRegistryService();
 
-        Console.Error.WriteLine("[PluginManager] ✓ Initialized successfully");
+        Logger.LogSuccess(ServiceName, "Initialized successfully");
         
+        // Return completed task - method is async for future extensibility
         return Task.CompletedTask;
     }
 
@@ -46,18 +49,18 @@ public class PluginManager : IPluginManager
         EnsureInitialized();
 
         // Validate request
-        var (isValid, error) = InputValidator.ValidatePluginInstallRequest(request);
-        if (!isValid)
+        var validation = InputValidator.ValidatePluginInstallRequest(request);
+        if (!validation.IsValid)
         {
-            Console.Error.WriteLine($"[PluginManager] Validation failed: {error}");
+            Logger.LogError(ServiceName, $"Validation failed: {validation.Error}");
             return new PluginInstallResult
             {
                 Success = false,
-                ErrorMessage = error
+                ErrorMessage = validation.Error
             };
         }
 
-        Console.Error.WriteLine($"[PluginManager] Installing plugin: {request.PackageId}");
+        Logger.LogInfo(ServiceName, $"Installing plugin: {request.PackageId}");
 
         var (success, errorMessage, installedPath) = await _packageService!.InstallPluginAsync(
             request.PackageId, 
@@ -65,7 +68,7 @@ public class PluginManager : IPluginManager
 
         if (!success)
         {
-            Console.Error.WriteLine($"[PluginManager] ✗ Installation failed: {errorMessage}");
+            Logger.LogError(ServiceName, $"Installation failed: {errorMessage}");
             return new PluginInstallResult
             {
                 Success = false,
@@ -81,7 +84,7 @@ public class PluginManager : IPluginManager
         var installedPlugin = plugins.FirstOrDefault(p => 
             p.Name.Contains(request.PackageId, StringComparison.OrdinalIgnoreCase));
 
-        Console.Error.WriteLine($"[PluginManager] ✓ Plugin '{request.PackageId}' installed successfully");
+        Logger.LogSuccess(ServiceName, $"Plugin '{request.PackageId}' installed successfully");
 
         return new PluginInstallResult
         {
@@ -98,26 +101,26 @@ public class PluginManager : IPluginManager
         EnsureInitialized();
 
         // Validate package ID
-        var (isValid, error) = InputValidator.ValidatePackageId(packageId);
-        if (!isValid)
+        var validation = InputValidator.ValidatePackageId(packageId);
+        if (!validation.IsValid)
         {
-            Console.Error.WriteLine($"[PluginManager] Validation failed: {error}");
+            Logger.LogError(ServiceName, $"Validation failed: {validation.Error}");
             return false;
         }
 
-        Console.Error.WriteLine($"[PluginManager] Uninstalling plugin: {packageId}");
+        Logger.LogInfo(ServiceName, $"Uninstalling plugin: {packageId}");
         
         var result = _packageService!.UninstallPlugin(packageId);
         
         if (result)
         {
-            Console.Error.WriteLine($"[PluginManager] ✓ Plugin '{packageId}' uninstalled successfully");
+            Logger.LogSuccess(ServiceName, $"Plugin '{packageId}' uninstalled successfully");
             // Reload plugins to update registry
             await ReloadPluginsAsync();
         }
         else
         {
-            Console.Error.WriteLine($"[PluginManager] ✗ Failed to uninstall plugin '{packageId}'");
+            Logger.LogError(ServiceName, $"Failed to uninstall plugin '{packageId}'");
         }
 
         return result;
@@ -130,7 +133,7 @@ public class PluginManager : IPluginManager
     {
         EnsureInitialized();
 
-        Console.Error.WriteLine("[PluginManager] Reloading plugins...");
+        Logger.LogInfo(ServiceName, "Reloading plugins...");
 
         // Load all plugins
         var plugins = await _loaderService!.LoadPluginsAsync();
@@ -138,12 +141,15 @@ public class PluginManager : IPluginManager
         // Register tools
         _registryService!.RegisterPlugins(plugins);
 
-        Console.Error.WriteLine($"[PluginManager] ✓ Reloaded {plugins.Count} plugins with {_registryService.GetToolCount()} tools");
+        Logger.LogSuccess(ServiceName, $"Reloaded {plugins.Count} plugins with {_registryService.GetToolCount()} tools");
     }
 
     /// <summary>
     /// Get list of all loaded plugins with their information
     /// </summary>
+    /// <remarks>
+    /// This method is async to match the RPC interface contract.
+    /// </remarks>
     public Task<List<PluginInfo>> GetAllPluginsAsync()
     {
         EnsureInitialized();

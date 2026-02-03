@@ -1,16 +1,18 @@
 using Microsoft.PowerPlatform.Dataverse.Client;
 using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 
 namespace DataverseMCPToolBox.Services;
 
 /// <summary>
-/// Service principal pour gérer les connexions à Dataverse
-/// Supporte le partage d'état entre instances via ConnectionStateService
+/// Primary service for managing Dataverse connections
+/// Supports state sharing between instances via ConnectionStateService
 /// </summary>
-public class DataverseConnectionService : IDisposable
+public class DataverseConnectionService : IAsyncDisposable
 {
+    private const string ServiceName = "DataverseConnectionService";
     private readonly DataverseAuthService _authService;
     private readonly Dictionary<string, ServiceClient> _activeConnections;
     private readonly ConnectionStateService _connectionStateService;
@@ -21,79 +23,67 @@ public class DataverseConnectionService : IDisposable
         _activeConnections = new Dictionary<string, ServiceClient>();
         _connectionStateService = connectionStateService ?? throw new ArgumentNullException(nameof(connectionStateService));
         
-        Console.Error.WriteLine("[DataverseConnectionService] Initialized with connection state sharing");
+        Logger.LogInfo(ServiceName, "Initialized with connection state sharing");
     }
 
     /// <summary>
-    /// Crée une nouvelle connexion à un environnement Dataverse
+    /// Create a new connection to a Dataverse environment
     /// </summary>
-    /// <param name="request">Les informations de connexion</param>
-    /// <returns>Le résultat de la tentative de connexion</returns>
+    /// <param name="request">Connection information</param>
+    /// <returns>Result of the connection attempt</returns>
     public async Task<ConnectionResult> CreateConnectionAsync(ConnectionRequest request)
     {
         // Validate request
-        var (isValid, error) = InputValidator.ValidateConnectionRequest(request);
-        if (!isValid)
+        var validation = InputValidator.ValidateConnectionRequest(request);
+        if (!validation.IsValid)
         {
-            Console.Error.WriteLine($"[DataverseConnectionService] Validation failed: {error}");
-            return new ConnectionResult
-            {
-                Success = false,
-                ErrorMessage = error
-            };
+            Logger.LogError(ServiceName, $"Validation failed: {validation.Error}");
+            return ConnectionResult.Failure(validation.Error!);
         }
 
         try
         {
             Microsoft.Identity.Client.AuthenticationResult authResult;
 
-            // Vérifier si un token existant est fourni
+            // Check if an existing token is provided
             if (!string.IsNullOrEmpty(request.AccessToken))
             {
-                // Tenter d'utiliser le token existant ou de le rafraîchir
+                // Try to use existing token or refresh it
                 try
                 {
                     authResult = await _authService.AuthenticateWithTokenAsync(request.EnvironmentUrl, request.AccessToken, request.RefreshToken);
                 }
                 catch
                 {
-                    // Si le token n'est pas valide, faire une auth interactive
+                    // If token is not valid, perform interactive auth
                     authResult = await _authService.AuthenticateInteractiveAsync(request.EnvironmentUrl);
                 }
             }
             else
             {
-                // Pas de token fourni, faire une auth interactive
+                // No token provided, perform interactive auth
                 authResult = await _authService.AuthenticateInteractiveAsync(request.EnvironmentUrl);
             }
 
             if (authResult == null || string.IsNullOrEmpty(authResult.AccessToken))
             {
-                return new ConnectionResult
-                {
-                    Success = false,
-                    ErrorMessage = "Échec de l'authentification: aucun token d'accès obtenu"
-                };
+                return ConnectionResult.AuthenticationFailure("no access token obtained");
             }
 
-            // Étape 2: Créer le ServiceClient avec le token
+            // Step 2: Create ServiceClient with the token
             var serviceClient = new ServiceClient(
                 instanceUrl: new Uri(request.EnvironmentUrl),
                 tokenProviderFunction: async (uri) => await Task.FromResult(authResult.AccessToken),
                 useUniqueInstance: true
             );
 
-            // Étape 3: Tester la connexion
+            // Step 3: Test the connection
             if (!serviceClient.IsReady)
             {
-                return new ConnectionResult
-                {
-                    Success = false,
-                    ErrorMessage = $"Impossible de se connecter: {serviceClient.LastError}"
-                };
+                return ConnectionResult.ConnectionFailure(serviceClient.LastError);
             }
 
-            // Étape 4: Récupérer les informations de l'utilisateur
+            // Step 4: Get user information
             var userId = serviceClient.OAuthUserId;
             
             // Use provided connection ID if exists (re-auth), otherwise create new one
@@ -101,12 +91,12 @@ public class DataverseConnectionService : IDisposable
                 ? request.ConnectionId 
                 : Guid.NewGuid().ToString();
 
-            Console.Error.WriteLine($"[DataverseConnectionService] Using connection ID: {connectionId} (provided: {!string.IsNullOrEmpty(request.ConnectionId)})");
+            Logger.LogInfo(ServiceName, $"Using connection ID: {connectionId} (provided: {!string.IsNullOrEmpty(request.ConnectionId)})");
             
             // Store/Update the connection in memory
             _activeConnections[connectionId] = serviceClient;
 
-            // Persister dans l'état partagé avec les tokens pour permettre la recréation
+            // Persist in shared state with tokens to allow recreation
             // Extract environment name from URL for display
             var uri = new Uri(request.EnvironmentUrl);
             var environmentName = uri.Host.Split('.').FirstOrDefault() ?? "Dataverse";
@@ -123,35 +113,30 @@ public class DataverseConnectionService : IDisposable
                 ExpiresOn = authResult.ExpiresOn.ToString("o")
             });
 
-            Console.Error.WriteLine($"[DataverseConnectionService] Connection {connectionId} persisted to shared state with auth tokens");
+            Logger.LogInfo(ServiceName, $"Connection {connectionId} persisted to shared state with auth tokens");
 
-            return new ConnectionResult
-            {
-                Success = true,
-                ConnectionId = connectionId,
-                OrganizationUrl = request.EnvironmentUrl,
-                UserId = userId.ToString(),
-                UserName = authResult.Account?.Username,
-                AccessToken = authResult.AccessToken,
-                RefreshToken = authResult.Account?.HomeAccountId?.Identifier, // MSAL gère le refresh en interne
-                ExpiresOn = authResult.ExpiresOn.ToString("o")
-            };
+            return ConnectionResult.SuccessResult(
+                connectionId,
+                request.EnvironmentUrl,
+                userId.ToString(),
+                authResult.Account?.Username,
+                authResult.AccessToken,
+                authResult.Account?.HomeAccountId?.Identifier,
+                authResult.ExpiresOn.ToString("o")
+            );
         }
         catch (Exception ex)
         {
-            return new ConnectionResult
-            {
-                Success = false,
-                ErrorMessage = $"Erreur lors de la création de la connexion: {ex.Message}"
-            };
+            Logger.LogException(ServiceName, ex, "Error creating connection");
+            return ConnectionResult.Failure($"Error creating connection: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Récupère une connexion active par son ID
-    /// Si la connexion n'est pas en mémoire mais existe dans l'état partagé, tente de la recréer
+    /// Retrieve an active connection by ID
+    /// If connection is not in memory but exists in shared state, attempts to recreate it
     /// </summary>
-    public ServiceClient? GetConnection(string connectionId)
+    public async Task<ServiceClient?> GetConnectionAsync(string connectionId)
     {
         // Check in-memory first
         if (_activeConnections.TryGetValue(connectionId, out var connection))
@@ -160,38 +145,45 @@ public class DataverseConnectionService : IDisposable
         }
 
         // Check persisted state (may be from another instance)
-#pragma warning disable VSTHRD002
-        var connectionInfo = _connectionStateService.GetConnectionAsync(connectionId).GetAwaiter().GetResult();
-#pragma warning restore VSTHRD002
+        var connectionInfo = await _connectionStateService.GetConnectionAsync(connectionId);
         if (connectionInfo != null && connectionInfo.IsValid)
         {
-            Console.Error.WriteLine($"[DataverseConnectionService] Connection {connectionId} found in shared state but not in memory");
+            Logger.LogInfo(ServiceName, $"Connection {connectionId} found in shared state but not in memory");
             
             // Try to recreate connection from persisted tokens
             if (!string.IsNullOrEmpty(connectionInfo.AccessToken))
             {
-                Console.Error.WriteLine($"[DataverseConnectionService] Attempting to recreate connection from persisted tokens...");
+                Logger.LogInfo(ServiceName, "Attempting to recreate connection from persisted tokens...");
                 var recreatedClient = RecreateConnectionFromTokens(connectionInfo);
                 
                 if (recreatedClient != null && recreatedClient.IsReady)
                 {
                     // Cache the recreated connection
                     _activeConnections[connectionId] = recreatedClient;
-                    Console.Error.WriteLine($"[DataverseConnectionService] ✓ Successfully recreated connection {connectionId}");
+                    Logger.LogSuccess(ServiceName, $"Successfully recreated connection {connectionId}");
                     return recreatedClient;
                 }
                 else
                 {
-                    Console.Error.WriteLine($"[DataverseConnectionService] ✗ Failed to recreate connection - client not ready");
+                    Logger.LogError(ServiceName, "Failed to recreate connection - client not ready");
                 }
             }
             else
             {
-                Console.Error.WriteLine($"[DataverseConnectionService] ⚠️  No tokens available in shared state - cannot recreate connection");
+                Logger.LogWarning(ServiceName, "No tokens available in shared state - cannot recreate connection");
             }
         }
 
         return null;
+    }
+    
+    /// <summary>
+    /// Synchronous version for backward compatibility with non-async callers
+    /// Prefer using GetConnectionAsync when possible
+    /// </summary>
+    public ServiceClient? GetConnection(string connectionId)
+    {
+        return GetConnectionAsync(connectionId).GetAwaiter().GetResult();
     }
     
     /// <summary>
@@ -211,13 +203,13 @@ public class DataverseConnectionService : IDisposable
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[DataverseConnectionService] Error recreating connection: {ex.Message}");
+            Logger.LogException(ServiceName, ex, "Error recreating connection");
             return null;
         }
     }
 
     /// <summary>
-    /// Ferme une connexion
+    /// Close a connection
     /// </summary>
     public async Task CloseConnectionAsync(string connectionId)
     {
@@ -229,11 +221,11 @@ public class DataverseConnectionService : IDisposable
 
         // Remove from shared state
         await _connectionStateService.RemoveConnectionAsync(connectionId);
-        Console.Error.WriteLine($"[DataverseConnectionService] Connection {connectionId} removed from shared state");
+        Logger.LogInfo(ServiceName, $"Connection {connectionId} removed from shared state");
     }
 
     /// <summary>
-    /// Ferme toutes les connexions actives
+    /// Close all active connections
     /// </summary>
     public async Task CloseAllConnectionsAsync()
     {
@@ -245,11 +237,11 @@ public class DataverseConnectionService : IDisposable
 
         // Clear shared state
         await _connectionStateService.ClearAllAsync();
-        Console.Error.WriteLine("[DataverseConnectionService] All connections cleared from shared state");
+        Logger.LogInfo(ServiceName, "All connections cleared from shared state");
     }
 
     /// <summary>
-    /// Teste si une connexion est toujours valide
+    /// Test if a connection is still valid
     /// </summary>
     public bool TestConnection(string connectionId)
     {
@@ -258,7 +250,7 @@ public class DataverseConnectionService : IDisposable
     }
 
     /// <summary>
-    /// Récupère les informations d'organisation pour une connexion
+    /// Retrieve organization information for a connection
     /// </summary>
     public async Task<OrganizationDetail?> GetOrganizationDetailsAsync(string connectionId)
     {
@@ -286,7 +278,7 @@ public class DataverseConnectionService : IDisposable
     }
 
     /// <summary>
-    /// Récupère les informations WhoAmI pour une connexion
+    /// Retrieve WhoAmI information for a connection
     /// </summary>
     public async Task<WhoAmIResult> GetWhoAmIAsync(string connectionId)
     {
@@ -302,20 +294,20 @@ public class DataverseConnectionService : IDisposable
 
         try
         {
-            // Exécuter WhoAmI request
+            // Execute WhoAmI request
             var whoAmIRequest = new Microsoft.Crm.Sdk.Messages.WhoAmIRequest();
             var whoAmIResponse = (Microsoft.Crm.Sdk.Messages.WhoAmIResponse)await connection.ExecuteAsync(whoAmIRequest);
 
-            // Récupérer les détails de l'utilisateur
+            // Get user details
             var userId = whoAmIResponse.UserId;
             var businessUnitId = whoAmIResponse.BusinessUnitId;
             var orgId = whoAmIResponse.OrganizationId;
 
-            // Récupérer le nom de l'utilisateur
+            // Get user name
             var userEntity = await connection.RetrieveAsync("systemuser", userId, new ColumnSet("fullname"));
             var userName = userEntity.GetAttributeValue<string>("fullname");
 
-            // Récupérer le nom de la business unit
+            // Get business unit name
             var buEntity = await connection.RetrieveAsync("businessunit", businessUnitId, new ColumnSet("name"));
             var businessUnitName = buEntity.GetAttributeValue<string>("name");
 
@@ -341,13 +333,11 @@ public class DataverseConnectionService : IDisposable
     }
 
     /// <summary>
-    /// Dispose all active connections
+    /// Dispose all active connections asynchronously
     /// </summary>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-#pragma warning disable VSTHRD002
-        CloseAllConnectionsAsync().GetAwaiter().GetResult();
-#pragma warning restore VSTHRD002
+        await CloseAllConnectionsAsync();
         GC.SuppressFinalize(this);
     }
 }

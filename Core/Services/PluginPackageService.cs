@@ -5,6 +5,8 @@ using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
 using System.IO.Compression;
+using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -13,8 +15,10 @@ namespace DataverseMCPToolBox.Services;
 /// </summary>
 public class PluginPackageService
 {
+    private const string ServiceName = "PluginPackageService";
     private readonly string _pluginDirectory;
     private readonly ILogger _logger;
+    private static readonly TimeSpan DefaultDownloadTimeout = TimeSpan.FromMinutes(5);
 
     public PluginPackageService(string pluginDirectory)
     {
@@ -25,42 +29,51 @@ public class PluginPackageService
         if (!Directory.Exists(_pluginDirectory))
         {
             Directory.CreateDirectory(_pluginDirectory);
-            Console.Error.WriteLine($"[PluginPackageService] Created plugin directory: {_pluginDirectory}");
+            Logger.LogInfo(ServiceName, $"Created plugin directory: {_pluginDirectory}");
         }
         else
         {
-            Console.Error.WriteLine($"[PluginPackageService] Using existing plugin directory: {_pluginDirectory}");
+            Logger.LogInfo(ServiceName, $"Using existing plugin directory: {_pluginDirectory}");
         }
     }
 
     /// <summary>
     /// Install a plugin from NuGet
     /// </summary>
+    /// <param name="packageId">The NuGet package ID to install</param>
+    /// <param name="version">Optional specific version (null for latest)</param>
+    /// <param name="cancellationToken">Cancellation token (default timeout: 5 minutes)</param>
     public async Task<(bool Success, string? ErrorMessage, string? InstalledPath)> InstallPluginAsync(
         string packageId, 
-        string? version = null)
+        string? version = null,
+        CancellationToken cancellationToken = default)
     {
+        // Apply default timeout if no cancellation requested
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(DefaultDownloadTimeout);
+        var effectiveCancellationToken = timeoutCts.Token;
+
         try
         {
-            Console.Error.WriteLine($"Installing plugin: {packageId} {version ?? "latest"}");
+            Logger.LogInfo(ServiceName, $"Installing plugin: {packageId} {version ?? "latest"}");
 
             // Configure NuGet source repository
-            var sourceRepository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
-            var findPackageResource = await sourceRepository.GetResourceAsync<FindPackageByIdResource>();
+            var sourceRepository = Repository.Factory.GetCoreV3(PackageSourceConstants.DefaultNuGetSource);
+            var findPackageResource = await sourceRepository.GetResourceAsync<FindPackageByIdResource>(effectiveCancellationToken);
 
             // Resolve version
             NuGetVersion? packageVersion = null;
             if (string.IsNullOrEmpty(version))
             {
                 // Get latest version
-                var versions = await findPackageResource.GetAllVersionsAsync(packageId, new SourceCacheContext(), _logger, CancellationToken.None);
+                var versions = await findPackageResource.GetAllVersionsAsync(packageId, new SourceCacheContext(), _logger, effectiveCancellationToken);
                 packageVersion = versions.OrderByDescending(v => v).FirstOrDefault();
                 
                 if (packageVersion == null)
                 {
-                    return (false, $"Package '{packageId}' not found on NuGet.org", null);
+                    return (false, $"Package '{packageId}' not found on {PackageSourceConstants.NuGetOrgName}", null);
                 }
-                Console.Error.WriteLine($"Resolved to latest version: {packageVersion}");
+                Logger.LogInfo(ServiceName, $"Resolved to latest version: {packageVersion}");
             }
             else
             {
@@ -80,7 +93,7 @@ public class PluginPackageService
                     packageStream, 
                     new SourceCacheContext(), 
                     _logger, 
-                    CancellationToken.None);
+                    effectiveCancellationToken);
 
                 if (!downloaded)
                 {
@@ -88,13 +101,13 @@ public class PluginPackageService
                 }
             }
 
-            Console.Error.WriteLine($"Downloaded package to: {packagePath}");
+            Logger.LogInfo(ServiceName, $"Downloaded package to: {packagePath}");
 
             // Extract package to plugin directory
             var extractPath = Path.Combine(_pluginDirectory, $"{packageId}.{packageVersion}");
             if (Directory.Exists(extractPath))
             {
-                Console.Error.WriteLine($"Plugin already installed at: {extractPath}");
+                Logger.LogInfo(ServiceName, $"Plugin already installed at: {extractPath}");
                 // Clean up old installation
                 Directory.Delete(extractPath, true);
             }
@@ -114,20 +127,26 @@ public class PluginPackageService
 
                     var targetPath = Path.Combine(extractPath, entry.Name);
                     entry.ExtractToFile(targetPath, true);
-                    Console.Error.WriteLine($"Extracted: {entry.Name}");
+                    Logger.LogInfo(ServiceName, $"Extracted: {entry.Name}");
                 }
             }
 
             // Clean up temp file
             File.Delete(packagePath);
 
-            Console.Error.WriteLine($"[PluginPackageService] ✓ Plugin '{packageId}' installed successfully");
-            Console.Error.WriteLine($"[PluginPackageService] Installation path: {extractPath}");
+            Logger.LogSuccess(ServiceName, $"Plugin '{packageId}' installed successfully");
+            Logger.LogInfo(ServiceName, $"Installation path: {extractPath}");
             return (true, null, extractPath);
+        }
+        catch (OperationCanceledException) when (effectiveCancellationToken.IsCancellationRequested)
+        {
+            var message = "Plugin installation timed out after 5 minutes";
+            Logger.LogError(ServiceName, message);
+            return (false, message, null);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error installing plugin: {ex}");
+            Logger.LogException(ServiceName, ex, "Error installing plugin");
             return (false, ex.Message, null);
         }
     }
@@ -139,28 +158,28 @@ public class PluginPackageService
     {
         try
         {
-            Console.Error.WriteLine($"Uninstalling plugin: {packageId}");
+            Logger.LogInfo(ServiceName, $"Uninstalling plugin: {packageId}");
 
             // Find plugin directory (may have version suffix)
             var pluginDirs = Directory.GetDirectories(_pluginDirectory, $"{packageId}.*");
             
             if (pluginDirs.Length == 0)
             {
-                Console.Error.WriteLine($"Plugin not found: {packageId}");
+                Logger.LogWarning(ServiceName, $"Plugin not found: {packageId}");
                 return false;
             }
 
             foreach (var dir in pluginDirs)
             {
                 Directory.Delete(dir, true);
-                Console.Error.WriteLine($"Deleted: {dir}");
+                Logger.LogInfo(ServiceName, $"Deleted: {dir}");
             }
 
             return true;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error uninstalling plugin: {ex}");
+            Logger.LogException(ServiceName, ex, "Error uninstalling plugin");
             return false;
         }
     }

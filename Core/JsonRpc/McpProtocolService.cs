@@ -2,6 +2,7 @@ using System.Text.Json;
 using DataverseMCPToolBox.Models;
 using DataverseMCPToolBox.Models.Mcp;
 using DataverseMCPToolBox.Services;
+using DataverseMCPToolBox.Helpers;
 using StreamJsonRpc;
 
 namespace DataverseMCPToolBox.JsonRpc;
@@ -13,6 +14,7 @@ namespace DataverseMCPToolBox.JsonRpc;
 /// </summary>
 public class McpProtocolService : IMcpProtocolService
 {
+    private const string ServiceName = "MCP Protocol";
     private readonly ToolRegistryService _toolRegistry;
     private readonly DataverseConnectionService _connectionService;
     private readonly ToolExecutionService _toolExecutionService;
@@ -30,7 +32,7 @@ public class McpProtocolService : IMcpProtocolService
         _toolExecutionService = toolExecutionService ?? throw new ArgumentNullException(nameof(toolExecutionService));
         _connectionStateService = connectionStateService ?? throw new ArgumentNullException(nameof(connectionStateService));
 
-        Console.Error.WriteLine("[MCP Protocol Service] Initialized with connection state sharing");
+        Logger.LogInfo(ServiceName, "Initialized with connection state sharing");
     }
 
     /// <summary>
@@ -40,7 +42,7 @@ public class McpProtocolService : IMcpProtocolService
     public void SetActiveConnection(string? connectionId)
     {
         _activeConnectionId = connectionId;
-        Console.Error.WriteLine($"[MCP Protocol] Active connection set to: {connectionId ?? "(none)"}");
+        Logger.LogInfo(ServiceName, $"Active connection set to: {connectionId ?? "(none)"}");
     }
 
     /// <summary>
@@ -55,18 +57,18 @@ public class McpProtocolService : IMcpProtocolService
         var clientName = clientInfo?.Name ?? "unknown client";
         var clientVersion = clientInfo?.Version ?? "unknown version";
         
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
-        Console.Error.WriteLine($"[MCP Protocol] Initialize called by: {clientName} v{clientVersion}");
-        Console.Error.WriteLine($"[MCP Protocol] Protocol version: {protocolVersion}");
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
+        Logger.LogSeparator(ServiceName);
+        Logger.LogInfo(ServiceName, $"Initialize called by: {clientName} v{clientVersion}");
+        Logger.LogInfo(ServiceName, $"Protocol version: {protocolVersion}");
+        Logger.LogSeparator(ServiceName);
 
         return Task.FromResult(new InitializeResult
         {
-            ProtocolVersion = "2024-11-05",
+            ProtocolVersion = McpProtocolConstants.CurrentVersion,
             ServerInfo = new ServerInfo
             {
-                Name = "dataverse-mcp-toolbox",
-                Version = "0.1.0"
+                Name = McpProtocolConstants.ServerName,
+                Version = McpProtocolConstants.ServerVersion
             },
             Capabilities = new ServerCapabilities
             {
@@ -81,16 +83,16 @@ public class McpProtocolService : IMcpProtocolService
     [JsonRpcMethod("tools/list")]
     public Task<ListToolsResult> ToolsListAsync(string? cursor = null)
     {
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
-        Console.Error.WriteLine("[MCP Protocol] tools/list called - discovering tools...");
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
+        Logger.LogSeparator(ServiceName);
+        Logger.LogInfo(ServiceName, "tools/list called - discovering tools...");
+        Logger.LogSeparator(ServiceName);
 
         var tools = _toolRegistry.GetAllTools();
         
-        Console.Error.WriteLine($"[MCP Protocol] Found {tools.Count} tool(s):");
+        Logger.LogInfo(ServiceName, $"Found {tools.Count} tool(s):");
         foreach (var tool in tools)
         {
-            Console.Error.WriteLine($"[MCP Protocol]   - {tool.Name}: {tool.Description}");
+            Logger.LogInfo(ServiceName, $"  - {tool.Name}: {tool.Description}");
         }
 
         var mcpTools = tools.Select(t => new McpTool
@@ -100,7 +102,7 @@ public class McpProtocolService : IMcpProtocolService
             InputSchema = t.InputSchema
         }).ToList();
 
-        Console.Error.WriteLine($"[MCP Protocol] Returning {mcpTools.Count} tool(s) to client");
+        Logger.LogInfo(ServiceName, $"Returning {mcpTools.Count} tool(s) to client");
 
         return Task.FromResult(new ListToolsResult
         {
@@ -115,22 +117,22 @@ public class McpProtocolService : IMcpProtocolService
     public async Task<CallToolResult> ToolsCallAsync(
         string name, 
         Dictionary<string, object>? arguments = null,
-        object? _meta = null) // VS Code MCP peut envoyer des métadonnées
+        object? _meta = null)
     {
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
-        Console.Error.WriteLine($"[MCP Protocol] tools/call invoked: {name}");
+        Logger.LogSeparator(ServiceName);
+        Logger.LogInfo(ServiceName, $"tools/call invoked: {name}");
         
         if (arguments != null && arguments.Count > 0)
         {
-            Console.Error.WriteLine($"[MCP Protocol] Arguments: {JsonSerializer.Serialize(arguments)}");
+            Logger.LogInfo(ServiceName, $"Arguments: {JsonSerializer.Serialize(arguments)}");
         }
         
         if (_meta != null)
         {
-            Console.Error.WriteLine($"[MCP Protocol] Metadata: {JsonSerializer.Serialize(_meta)}");
+            Logger.LogInfo(ServiceName, $"Metadata: {JsonSerializer.Serialize(_meta)}");
         }
         
-        Console.Error.WriteLine("[MCP Protocol] ========================================");
+        Logger.LogSeparator(ServiceName);
 
         try
         {
@@ -139,19 +141,19 @@ public class McpProtocolService : IMcpProtocolService
             
             if (string.IsNullOrEmpty(activeConnectionId))
             {
-                Console.Error.WriteLine("[MCP Protocol] No active connection in memory, checking shared state...");
+                Logger.LogInfo(ServiceName, "No active connection in memory, checking shared state...");
                 activeConnectionId = await _connectionStateService.GetActiveConnectionIdAsync();
                 
                 if (!string.IsNullOrEmpty(activeConnectionId))
                 {
-                    Console.Error.WriteLine($"[MCP Protocol] ✓ Found active connection in shared state: {activeConnectionId}");
+                    Logger.LogSuccess(ServiceName, $"Found active connection in shared state: {activeConnectionId}");
                     _activeConnectionId = activeConnectionId; // Cache for next call
                 }
             }
             
             if (string.IsNullOrEmpty(activeConnectionId))
             {
-                Console.Error.WriteLine("[MCP Protocol] ✗ No active Dataverse connection in shared state");
+                Logger.LogError(ServiceName, "No active Dataverse connection in shared state");
                 return new CallToolResult
                 {
                     IsError = true,
@@ -165,16 +167,13 @@ public class McpProtocolService : IMcpProtocolService
                 };
             }
 
-            Console.Error.WriteLine($"[MCP Protocol] Using active connection: {activeConnectionId}");
+            Logger.LogInfo(ServiceName, $"Using active connection: {activeConnectionId}");
 
             // Convert MCP arguments to JSON string for tool execution
             string? parametersJson = null;
             if (arguments != null && arguments.Count > 0)
             {
-                parametersJson = JsonSerializer.Serialize(arguments, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                parametersJson = JsonSerializer.Serialize(arguments, JsonHelper.CamelCaseOptions);
             }
 
             // Execute tool using existing infrastructure
@@ -185,14 +184,14 @@ public class McpProtocolService : IMcpProtocolService
                 ParametersJson = parametersJson
             };
 
-            Console.Error.WriteLine($"[MCP Protocol] Executing tool via ToolExecutionService...");
+            Logger.LogInfo(ServiceName, "Executing tool via ToolExecutionService...");
             var result = await _toolExecutionService.ExecuteToolAsync(toolRequest);
 
             if (!result.IsSuccess)
             {
-                Console.Error.WriteLine($"[MCP Protocol] ✗ Tool execution failed");
-                Console.Error.WriteLine($"[MCP Protocol]   Error code: {result.Error?.Code}");
-                Console.Error.WriteLine($"[MCP Protocol]   Error message: {result.Error?.Message}");
+                Logger.LogError(ServiceName, "Tool execution failed");
+                Logger.LogInfo(ServiceName, $"  Error code: {result.Error?.Code}");
+                Logger.LogInfo(ServiceName, $"  Error message: {result.Error?.Message}");
                 
                 return new CallToolResult
                 {
@@ -203,7 +202,7 @@ public class McpProtocolService : IMcpProtocolService
                         {
                             Text = $"Tool execution failed: {result.Error?.Message ?? "Unknown error"}\n\n" +
                                    (result.Error?.Details != null 
-                                       ? $"Details: {JsonSerializer.Serialize(result.Error.Details, new JsonSerializerOptions { WriteIndented = true })}" 
+                                       ? $"Details: {JsonSerializer.Serialize(result.Error.Details, JsonHelper.IndentedCamelCaseOptions)}" 
                                        : "")
                         }
                     }
@@ -212,11 +211,11 @@ public class McpProtocolService : IMcpProtocolService
 
             // Format successful result
             var resultText = result.Content != null
-                ? JsonSerializer.Serialize(result.Content, new JsonSerializerOptions { WriteIndented = true })
+                ? JsonSerializer.Serialize(result.Content, JsonHelper.IndentedCamelCaseOptions)
                 : "Tool executed successfully with no output.";
 
-            Console.Error.WriteLine($"[MCP Protocol] ✓ Tool executed successfully");
-            Console.Error.WriteLine($"[MCP Protocol] Result preview: {(resultText.Length > 100 ? resultText.Substring(0, 100) + "..." : resultText)}");
+            Logger.LogSuccess(ServiceName, "Tool executed successfully");
+            Logger.LogInfo(ServiceName, $"Result preview: {(resultText.Length > 100 ? resultText.Substring(0, 100) + "..." : resultText)}");
 
             return new CallToolResult
             {
@@ -228,10 +227,7 @@ public class McpProtocolService : IMcpProtocolService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[MCP Protocol] ✗ Exception during tool execution:");
-            Console.Error.WriteLine($"[MCP Protocol]   Type: {ex.GetType().Name}");
-            Console.Error.WriteLine($"[MCP Protocol]   Message: {ex.Message}");
-            Console.Error.WriteLine($"[MCP Protocol]   Stack trace: {ex.StackTrace}");
+            Logger.LogException(ServiceName, ex, "Exception during tool execution");
             
             return new CallToolResult
             {

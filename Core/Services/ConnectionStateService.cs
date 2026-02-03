@@ -1,4 +1,5 @@
 using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -7,8 +8,13 @@ namespace DataverseMCPToolBox.Services;
 /// Each VS Code instance has its own isolated Core Server with independent state
 /// Sidecar architecture: State is isolated per instance, no sharing needed
 /// </summary>
+/// <remarks>
+/// All methods are async to satisfy the RPC interface contract, even though operations
+/// are synchronous. The in-memory dictionary operations are thread-safe via locking.
+/// </remarks>
 public class ConnectionStateService
 {
+    private const string ServiceName = "ConnectionState";
     private readonly Dictionary<string, ConnectionInfo> _connections = new();
     private string? _activeConnectionId;
     private readonly object _lock = new();
@@ -17,7 +23,7 @@ public class ConnectionStateService
     {
         // Sidecar architecture: Each Core Server instance has its own in-memory state
         // No file-based persistence needed - state is isolated per VS Code window
-        Console.Error.WriteLine("[ConnectionState] Using in-memory state (isolated per instance)");
+        Logger.LogInfo(ServiceName, "Using in-memory state (isolated per instance)");
     }
 
     /// <summary>
@@ -28,7 +34,7 @@ public class ConnectionStateService
         lock (_lock)
         {
             _connections[connectionId] = connectionInfo;
-            Console.Error.WriteLine($"[ConnectionState] Saved connection: {connectionId}");
+            Logger.LogInfo(ServiceName, $"Saved connection: {connectionId}");
         }
         return Task.CompletedTask;
     }
@@ -41,7 +47,7 @@ public class ConnectionStateService
         lock (_lock)
         {
             _connections.Remove(connectionId);
-            Console.Error.WriteLine($"[ConnectionState] Removed connection: {connectionId}");
+            Logger.LogInfo(ServiceName, $"Removed connection: {connectionId}");
         }
         return Task.CompletedTask;
     }
@@ -54,7 +60,7 @@ public class ConnectionStateService
         lock (_lock)
         {
             _activeConnectionId = connectionId;
-            Console.Error.WriteLine($"[ConnectionState] Set active connection: {connectionId ?? "(none)"}");
+            Logger.LogInfo(ServiceName, $"Set active connection: {connectionId ?? "(none)"}");
         }
         return Task.CompletedTask;
     }
@@ -103,26 +109,8 @@ public class ConnectionStateService
         {
             _connections.Clear();
             _activeConnectionId = null;
-            Console.Error.WriteLine("[ConnectionState] Cleared all connections");
+            Logger.LogInfo(ServiceName, "Cleared all connections");
         }
         return Task.CompletedTask;
     }
-}
-
-/// <summary>
-/// Connection information stored in the in-memory state
-/// Includes authentication tokens for connection management
-/// </summary>
-public class ConnectionInfo
-{
-    public string ConnectionId { get; set; } = string.Empty;
-    public string EnvironmentUrl { get; set; } = string.Empty;
-    public string ConnectionName { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public bool IsValid { get; set; }
-    
-    // Authentication tokens for connection recreation
-    public string? AccessToken { get; set; }
-    public string? RefreshToken { get; set; }
-    public string? ExpiresOn { get; set; }
 }
