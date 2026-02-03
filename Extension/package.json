@@ -64,7 +64,8 @@
       {
         "command": "dataversemcptoolbox.addConnection",
         "title": "Add Connection",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.removeConnection",
@@ -74,7 +75,8 @@
       {
         "command": "dataversemcptoolbox.setActiveConnection",
         "title": "Set as Active Connection",
-        "icon": "$(star-empty)"
+        "icon": "$(star-empty)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.refreshConnections",
@@ -84,27 +86,32 @@
       {
         "command": "dataversemcptoolbox.showWhoAmI",
         "title": "Show WhoAmI Info",
-        "icon": "$(question)"
+        "icon": "$(question)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.refreshPlugins",
         "title": "Refresh Plugins",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.installPlugin",
         "title": "Install Plugin from NuGet",
-        "icon": "$(cloud-download)"
+        "icon": "$(cloud-download)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.uninstallPlugin",
         "title": "Uninstall Plugin",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.callTool",
         "title": "Execute Tool",
-        "icon": "$(play)"
+        "icon": "$(play)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.updateServer",

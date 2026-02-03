@@ -17,8 +17,12 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
     private readonly ToolRegistryService _toolRegistryService;
     private readonly ToolExecutionService _toolExecutionService;
     private string? _activeConnectionId;
-    private StreamJsonRpc.JsonRpc? _jsonRpcConnection;
     private readonly string _pluginDirectory;
+
+    /// <summary>
+    /// Get the MCP Protocol service for registration
+    /// </summary>
+    public McpProtocolService McpProtocolService => _mcpProtocolService;
 
     public DataverseMCPToolBoxRpcService(string pluginDirectory)
     {
@@ -31,7 +35,10 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
         // Initialize plugin manager immediately
         Console.Error.WriteLine($"[Management RPC] Initializing with plugin directory: {pluginDirectory}");
         _pluginManager = new PluginManager();
+        // Note: Blocking is acceptable here during server startup (not in UI context)
+#pragma warning disable VSTHRD002
         _pluginManager.InitializeAsync(pluginDirectory).GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
 
         // Get the registry service from plugin manager
         _toolRegistryService = ((PluginManager)_pluginManager).GetRegistryService();
@@ -51,26 +58,9 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
         Console.Error.WriteLine("[Management RPC] ✓ MCP Protocol service created (unified instance - shared in-memory state)");
 
         // Load existing plugins
+#pragma warning disable VSTHRD002
         _pluginManager.ReloadPluginsAsync().GetAwaiter().GetResult();
-    }
-
-    /// <summary>
-    /// Set the JSON-RPC connection and register MCP service
-    /// Called from Program.cs
-    /// </summary>
-    public void SetJsonRpcConnection(StreamJsonRpc.JsonRpc jsonRpc)
-    {
-        _jsonRpcConnection = jsonRpc;
-        
-        // Register MCP protocol service now that we have the connection
-        _jsonRpcConnection.AddLocalRpcTarget(_mcpProtocolService, new JsonRpcTargetOptions
-        {
-            NotifyClientOfEvents = false
-        });
-        Console.Error.WriteLine("[Management RPC] ✓ MCP Protocol service registered");
-        Console.Error.WriteLine("[Management RPC] Server now supports:");
-        Console.Error.WriteLine("[Management RPC]   - MCP methods: initialize, tools/list, tools/call");
-        Console.Error.WriteLine("[Management RPC]   - Management methods: CreateConnection, InstallPlugin, etc.");
+#pragma warning restore VSTHRD002
     }
 
     // Connection management methods
@@ -172,5 +162,48 @@ public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
     public Task<ToolCallResult> CallToolAsync(ToolCallRequest request)
     {
         return _toolManager.ExecuteToolAsync(request);
+    }
+
+    // Server management methods
+    public Task<ServerVersionInfo> GetServerVersionAsync()
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version?.ToString() ?? "unknown";
+        // Use AppContext.BaseDirectory for single-file published apps (Assembly.Location is empty)
+#pragma warning disable IL3000 // Avoid accessing Assembly file path when publishing as a single file
+        var assemblyPath = string.IsNullOrEmpty(assembly.Location) 
+            ? Path.Combine(AppContext.BaseDirectory, "DataverseMCPToolBox.dll")
+            : assembly.Location;
+#pragma warning restore IL3000
+        var buildDate = System.IO.File.GetLastWriteTimeUtc(assemblyPath);
+        var platform = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+
+        var versionInfo = new ServerVersionInfo
+        {
+            Version = version,
+            BuildDate = buildDate,
+            Platform = platform
+        };
+
+        Console.Error.WriteLine($"[Management RPC] GetServerVersion: {version} ({platform})");
+        return Task.FromResult(versionInfo);
+    }
+
+    public async Task ShutdownServerAsync()
+    {
+        Console.Error.WriteLine("[Management RPC] Shutdown requested - closing all connections...");
+        
+        // Close all active connections gracefully
+        await _connectionService.CloseAllConnectionsAsync();
+        
+        Console.Error.WriteLine("[Management RPC] All connections closed - initiating server shutdown");
+        
+        // Trigger application exit after a brief delay to allow response to be sent
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500); // Give time for RPC response to be sent
+            Console.Error.WriteLine("[Management RPC] Exiting server process...");
+            Environment.Exit(0);
+        });
     }
 }

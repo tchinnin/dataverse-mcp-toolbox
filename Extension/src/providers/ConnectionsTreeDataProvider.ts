@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DataverseConnection } from '../models/DataverseConnection';
 import { ConnectionStorageService } from '../services/ConnectionStorageService';
+import type { DataverseMCPToolBoxRpcClient } from '../services/DataverseMCPToolBoxRpcClient';
 
 /**
  * Tree item representing a Dataverse connection
@@ -28,11 +29,19 @@ export class ConnectionTreeItem extends vscode.TreeItem {
 /**
  * TreeDataProvider for displaying Dataverse connections
  */
-export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<ConnectionTreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTreeItem | undefined | null | void> = new vscode.EventEmitter<ConnectionTreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<ConnectionTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<ConnectionTreeItem | vscode.TreeItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<ConnectionTreeItem | vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<ConnectionTreeItem | vscode.TreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<ConnectionTreeItem | vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private rpcClient: DataverseMCPToolBoxRpcClient | null = null;
 
     constructor(private storageService: ConnectionStorageService) {}
+
+    /**
+     * Set the RPC client for connection status checking
+     */
+    setRpcClient(client: DataverseMCPToolBoxRpcClient): void {
+        this.rpcClient = client;
+    }
 
     /**
      * Refresh the tree view
@@ -44,31 +53,43 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
     /**
      * Get tree item representation
      */
-    getTreeItem(element: ConnectionTreeItem): vscode.TreeItem {
+    getTreeItem(element: ConnectionTreeItem | vscode.TreeItem): vscode.TreeItem {
         return element;
     }
 
     /**
      * Get children of an element (or root if element is undefined)
      */
-    getChildren(element?: ConnectionTreeItem): Thenable<ConnectionTreeItem[]> {
+    async getChildren(element?: ConnectionTreeItem | vscode.TreeItem): Promise<Array<ConnectionTreeItem | vscode.TreeItem>> {
         if (element) {
             // No child elements for connections
-            return Promise.resolve([]);
+            return [];
+        }
+
+        const items: Array<ConnectionTreeItem | vscode.TreeItem> = [];
+
+        // Show warning if server is not connected
+        if (this.rpcClient && !this.rpcClient.isServerConnected()) {
+            const warningItem = new vscode.TreeItem('⚠️ Server Not Running', vscode.TreeItemCollapsibleState.None);
+            warningItem.tooltip = 'The Dataverse MCP Server must be started by GitHub Copilot.\nClick the status bar to troubleshoot or reload VS Code.';
+            warningItem.description = 'Click status bar for help';
+            warningItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+            warningItem.contextValue = 'serverWarning';
+            items.push(warningItem);
         }
 
         // Return all connections as root elements
         const connections = this.storageService.getConnections();
         
-        if (connections.length === 0) {
+        if (connections.length === 0 && items.length === 0) {
             // Return empty array, VSCode will show the welcome view
-            return Promise.resolve([]);
+            return [];
         }
 
-        const items = connections.map(conn => 
+        const connectionItems = connections.map(conn => 
             new ConnectionTreeItem(conn, vscode.TreeItemCollapsibleState.None)
         );
 
-        return Promise.resolve(items);
+        return [...items, ...connectionItems];
     }
 }

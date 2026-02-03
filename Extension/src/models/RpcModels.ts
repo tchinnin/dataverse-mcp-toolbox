@@ -1,4 +1,5 @@
 export interface ConnectionRequest {
+    connectionId?: string;  // Optional: existing connection ID for re-authentication
     environmentUrl: string;
     connectionName?: string;
     accessToken?: string;

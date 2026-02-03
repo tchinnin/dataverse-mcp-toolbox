@@ -33,6 +33,13 @@ export class MCPConfigurationService {
     }
 
     /**
+     * Get the MCP configuration file path
+     */
+    public getMcpConfigPath(): string {
+        return this.mcpConfigPath;
+    }
+
+    /**
      * Get VS Code User directory path based on platform
      */
     private getVSCodeUserDirectory(): string {
@@ -99,52 +106,64 @@ export class MCPConfigurationService {
 
     /**
      * Register or update the Dataverse MCP server in the global configuration
-     * @param serverPath Absolute path to the MCP server executable
+     * @param serverPath Absolute path to the MCP server executable (Bridge)
      * @param pluginDirectory Absolute path to the plugins directory
+     * @param pipeName Named pipe name for this VS Code instance
      * @param showNotification Whether to show a notification to the user (default: true)
+     * @returns true if VS Code needs to be reloaded (first registration), false otherwise
      */
-    public async registerMcpServer(serverPath: string, pluginDirectory: string, showNotification: boolean = true): Promise<void> {
+    public async registerMcpServer(
+        serverPath: string, 
+        pluginDirectory: string,
+        pipeName: string,
+        showNotification: boolean = true
+    ): Promise<boolean> {
         try {
-            console.error(`[MCPConfig] Registering Dataverse MCP server: ${serverPath}`);
+            console.error(`[MCPConfig] Registering Dataverse MCP Bridge: ${serverPath}`);
             console.error(`[MCPConfig] Plugin directory: ${pluginDirectory}`);
+            console.error(`[MCPConfig] Pipe name: ${pipeName}`);
 
             // Verify server path exists
             if (!fs.existsSync(serverPath)) {
-                throw new Error(`Server executable not found at: ${serverPath}`);
+                throw new Error(`Bridge executable not found at: ${serverPath}`);
             }
 
             // Load existing configuration
             const config = this.loadMcpConfiguration();
 
-            // Create server configuration with plugin directory as environment variable
-            // NO --mcp flag needed: server now ALWAYS uses newline-delimited JSON protocol
+            // Create Bridge configuration with pipe name environment variable
+            // Bridge forwards stdio to Named Pipe (Core Server)
             const serverConfig: McpServer = {
                 type: 'stdio',
                 command: serverPath,
-                args: [], // No arguments needed - unified protocol
+                args: [], // No arguments needed - Bridge auto-forwards
                 env: {
-                    DATAVERSE_MCP_PLUGIN_DIR: pluginDirectory
+                    DATAVERSE_MCP_PLUGIN_DIR: pluginDirectory,
+                    DATAVERSE_MCP_PIPE_NAME: pipeName  // Critical: tells Bridge which pipe to connect to
                 }
             };
 
-            // Register or update the server
+            // Check if this is a new registration
             const previousConfig = config.servers[MCPConfigurationService.MCP_SERVER_NAME];
+            const isNewRegistration = !previousConfig;
+            
+            // Register or update the server
             config.servers[MCPConfigurationService.MCP_SERVER_NAME] = serverConfig;
 
             // Save configuration
             this.saveMcpConfiguration(config);
 
             if (previousConfig) {
-                console.error(`[MCPConfig] Updated existing Dataverse MCP server configuration`);
+                console.error(`[MCPConfig] Updated existing Dataverse MCP Bridge configuration`);
             } else {
-                console.error(`[MCPConfig] Registered new Dataverse MCP server configuration`);
+                console.error(`[MCPConfig] Registered new Dataverse MCP Bridge configuration - reload required`);
             }
 
             // Notify user with option to reload VS Code (if requested)
             if (showNotification) {
                 const action = previousConfig ? 'updated' : 'registered';
                 vscode.window.showInformationMessage(
-                    `Dataverse MCP server ${action} in mcp.json. Tools are available via MCP protocol for compatible AI assistants.`,
+                    `Dataverse MCP Bridge ${action} in mcp.json. Tools are available via MCP protocol for Copilot.`,
                     'Open MCP Configuration'
                 ).then(selection => {
                     if (selection === 'Open MCP Configuration') {
@@ -152,6 +171,8 @@ export class MCPConfigurationService {
                     }
                 });
             }
+
+            return isNewRegistration;
 
         } catch (error) {
             console.error('[MCPConfig] Failed to register MCP server:', error);
@@ -239,12 +260,13 @@ export class MCPConfigurationService {
 
     /**
      * Update the server path if already registered
-     * @param serverPath New server path
+     * @param serverPath New server path (Bridge)
      * @param pluginDirectory Plugin directory path
+     * @param pipeName Named pipe name
      */
-    public async updateServerPath(serverPath: string, pluginDirectory: string): Promise<void> {
+    public async updateServerPath(serverPath: string, pluginDirectory: string, pipeName: string): Promise<void> {
         if (this.isServerRegistered()) {
-            await this.registerMcpServer(serverPath, pluginDirectory);
+            await this.registerMcpServer(serverPath, pluginDirectory, pipeName, false);
         }
     }
 }

@@ -11,16 +11,16 @@
     <NoWarn>VSTHRD103</NoWarn>
     
     <!-- NuGet Package Metadata -->
-    <PackageId>DataverseMCPToolBox.Server</PackageId>
-    <Version>0.1.0-alpha</Version>
+    <PackageId>DataverseMCPToolBox.Runtime</PackageId>
+    <Version>0.2.0-alpha</Version>
     <Authors>Théophile CHIN-NIN</Authors>
     <Company>tchinnin</Company>
-    <Description>MCP (Model Context Protocol) server for Dataverse operations. Provides JSON-RPC interface for managing Dataverse connections and executing plugins.</Description>
+    <Description>Runtime package for Dataverse MCP Toolbox. Contains Core Server and Bridge binaries for all supported platforms (macOS, Windows, Linux).</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</PackageProjectUrl>
-    <PackageTags>dataverse;mcp;server;model-context-protocol;power-platform</PackageTags>
+    <PackageTags>dataverse;mcp;server;model-context-protocol;power-platform;runtime</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
   </PropertyGroup>
@@ -44,11 +44,20 @@
   </ItemGroup>
 
   <!-- Include platform-specific binaries in NuGet package -->
+  <!-- Core Server binaries -->
   <ItemGroup>
     <None Include="publish/osx-arm64/**" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
     <None Include="publish/osx-x64/**" Pack="true" PackagePath="runtimes/osx-x64/native/" />
     <None Include="publish/win-x64/**" Pack="true" PackagePath="runtimes/win-x64/native/" />
     <None Include="publish/linux-x64/**" Pack="true" PackagePath="runtimes/linux-x64/native/" />
+  </ItemGroup>
+
+  <!-- Bridge binaries (from sibling project) -->
+  <ItemGroup>
+    <None Include="../Bridge/publish/osx-arm64/**" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
+    <None Include="../Bridge/publish/osx-x64/**" Pack="true" PackagePath="runtimes/osx-x64/native/" />
+    <None Include="../Bridge/publish/win-x64/**" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="../Bridge/publish/linux-x64/**" Pack="true" PackagePath="runtimes/linux-x64/native/" />
   </ItemGroup>
 
 </Project>

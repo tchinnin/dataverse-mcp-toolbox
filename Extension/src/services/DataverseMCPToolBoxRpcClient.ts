@@ -1,6 +1,7 @@
+import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
-import * as vscode from 'vscode';
+import * as net from 'net';
 import { MessageConnection, createMessageConnection } from 'vscode-jsonrpc/node';
 import { NewlineDelimitedMessageReader } from '../utils/NewlineDelimitedMessageReader';
 import { NewlineDelimitedMessageWriter } from '../utils/NewlineDelimitedMessageWriter';
@@ -10,17 +11,59 @@ import { ToolInfo } from '../models/ToolInfo';
 import { ToolCallRequest } from '../models/ToolCallRequest';
 import { ToolCallResult } from '../models/ToolCallResult';
 import { PluginInstallRequest, PluginInstallResult } from '../models/PluginInstallRequest';
+import { ServerVersionInfo } from '../models/ServerVersionInfo';
+
+// Platform-specific Named Pipe configuration
+const CONNECTION_RETRY_DELAY = 500;
+const MAX_CONNECTION_RETRIES = 15;
+
+// Helper to get platform-specific pipe path using environment variable
+function getPipePath(): string {
+    // Read pipe name from environment variable (set during server startup)
+    const pipeName = process.env.DATAVERSE_MCP_PIPE_NAME || 'DataverseMCPToolBox';
+    
+    if (process.platform === 'win32') {
+        return `\\\\.\\pipe\\${pipeName}`;
+    } else {
+        // Unix-like systems use domain sockets for named pipes
+        return path.join('/tmp', `CoreFxPipe_${pipeName}`);
+    }
+}
 
 /**
- * Client JSON-RPC pour communiquer avec le serveur .NET Dataverse
+ * Client JSON-RPC pour communiquer avec le serveur .NET Dataverse via Named Pipes
+ * Architecture Sidecar: 
+ * - Le serveur principal écoute sur Named Pipe
+ * - L'extension se connecte via Named Pipe Client
+ * - GitHub Copilot utilise le Bridge (STDIO → Named Pipe)
  */
 export class DataverseMCPToolBoxRpcClient {
     private connection: MessageConnection | null = null;
-    private process: cp.ChildProcess | null = null;
+    private serverProcess: cp.ChildProcess | null = null;
+    private pipeStream: net.Socket | null = null;
     private isConnected: boolean = false;
+    private _pipeName: string = '';
+    private readonly _onConnectionStatusChanged = new vscode.EventEmitter<boolean>();
+    public readonly onConnectionStatusChanged = this._onConnectionStatusChanged.event;
 
     /**
-     * Démarre le serveur .NET et établit la connexion JSON-RPC
+     * Get the current Named Pipe name
+     * This is used by the MCP Bridge to connect to the same Core Server
+     */
+    public getPipeName(): string {
+        return this._pipeName || process.env.DATAVERSE_MCP_PIPE_NAME || `DataverseMCPToolBox-${process.pid}`;
+    }
+
+    /**
+     * Check if server is currently connected
+     */
+    public isServerConnected(): boolean {
+        return this.isConnected && this.connection !== null;
+    }
+
+    /**
+     * Connecte au serveur .NET via Named Pipe
+     * Si le serveur n'est pas démarré, le démarre automatiquement
      */
     async connect(serverPath: string, pluginDirectory?: string): Promise<void> {
         if (this.isConnected) {
@@ -28,97 +71,202 @@ export class DataverseMCPToolBoxRpcClient {
         }
 
         try {
-            console.error(`[RPC Client] Starting .NET RPC server from: ${serverPath}`);
-            if (pluginDirectory) {
-                console.error(`[RPC Client] Plugin directory: ${pluginDirectory}`);
-            }
+            console.error('[RPC Client] Attempting Named Pipe connection to server...');
 
-            // Démarrer le processus .NET SANS flag --mcp pour Extension
-            // Pass plugin directory via environment variable
-            const env = { ...process.env };
-            if (pluginDirectory) {
-                env.DATAVERSE_MCP_PLUGIN_DIR = pluginDirectory;
-            }
-
-            // Extension uses Content-Length protocol (vscode-jsonrpc default)
-            // The MCP instance (launched by VS Code for Copilot) runs separately with --mcp flag
-            // Both instances share connection state via persisted connection file
-            this.process = cp.spawn(serverPath, [], {
-                stdio: ['pipe', 'pipe', 'pipe'],
-                env: env
-            });
-
-            if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
-                throw new Error('Failed to create stdio streams for .NET process');
-            }
-
-            // Logger les erreurs du processus (stderr only - stdout is used for JSON-RPC)
-            this.process.stderr.on('data', (data) => {
-                console.error(`[.NET Server STDERR] ${data.toString()}`);
-            });
-
-            this.process.on('error', (error) => {
-                console.error('Failed to start .NET process:', error);
-                vscode.window.showErrorMessage(`Failed to start Dataverse RPC server: ${error.message}`);
-            });
-
-            this.process.on('exit', (code) => {
-                console.log(`.NET process exited with code ${code}`);
-                this.isConnected = false;
-            });
-
-            // Créer la connexion JSON-RPC avec newline-delimited protocol
-            // IMPORTANT: Using newline-delimited JSON-RPC to match .NET's NewLineDelimitedMessageHandler
-            // This allows unified communication protocol between Extension and MCP (GitHub Copilot)
-            const reader = new NewlineDelimitedMessageReader(this.process.stdout);
-            const writer = new NewlineDelimitedMessageWriter(this.process.stdin);
-            this.connection = createMessageConnection(reader, writer);
-
-            // Debug: logger les messages envoyés et reçus
-            this.connection.trace(2, {
-                log: (message: string) => console.log(`[JSON-RPC TRACE] ${message}`)
-            });
-
-            // Gérer les erreurs de connexion
-            this.connection.onError((error: any) => {
-                console.error('JSON-RPC connection error:', error);
-            });
-
-            this.connection.onClose(() => {
-                console.log('JSON-RPC connection closed');
-                this.isConnected = false;
-            });
-
-            // Démarrer l'écoute
-            this.connection.listen();
+            // Try to connect to existing server
+            let connected = false;
             
-            // Attendre un peu pour que le serveur soit prêt
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
+            for (let i = 0; i < MAX_CONNECTION_RETRIES; i++) {
+                connected = await this.tryConnect();
+                if (connected) {
+                    break;
+                }
+                
+                // If first attempt failed, try to start the server
+                if (i === 0) {
+                    console.error('[RPC Client] Server not found, starting main server...');
+                    await this.startServer(serverPath, pluginDirectory);
+                }
+                
+                console.error(`[RPC Client] Connection attempt ${i + 1}/${MAX_CONNECTION_RETRIES}...`);
+                await new Promise(resolve => setTimeout(resolve, CONNECTION_RETRY_DELAY));
+            }
+
+            if (!connected) {
+                throw new Error(
+                    'Could not connect to Dataverse MCP server via Named Pipe. ' +
+                    'Please check the server logs in VS Code Output panel.'
+                );
+            }
+
+            console.error('[RPC Client] Connected to Named Pipe server successfully');
             this.isConnected = true;
-
-            console.log('JSON-RPC connection established');
+            this._onConnectionStatusChanged.fire(true);
         } catch (error) {
             console.error('Error connecting to .NET server:', error);
+            this.isConnected = false;
+            this._onConnectionStatusChanged.fire(false);
             throw error;
         }
     }
 
     /**
-     * Ferme la connexion et arrête le serveur .NET
+     * Start the main server process
+     */
+    private async startServer(serverPath: string, pluginDirectory?: string): Promise<void> {
+        console.error('[RPC Client] Starting main server process...');
+
+        // Generate unique pipe name based on VS Code process PID for multi-instance isolation
+        const pipeName = `DataverseMCPToolBox-${process.pid}`;
+        this._pipeName = pipeName;
+        process.env.DATAVERSE_MCP_PIPE_NAME = pipeName;
+        console.error(`[RPC Client] Using Named Pipe: ${pipeName}`);
+
+        const env: NodeJS.ProcessEnv = { ...process.env };
+        if (pluginDirectory) {
+            env['DATAVERSE_MCP_PLUGIN_DIR'] = pluginDirectory;
+        }
+        // Ensure pipe name is passed to server
+        env['DATAVERSE_MCP_PIPE_NAME'] = pipeName;
+
+        this.serverProcess = cp.spawn(serverPath, [], {
+            stdio: ['ignore', 'ignore', 'pipe'], // stderr only for logs
+            env,
+            detached: false
+        });
+
+        // Capture server logs
+        this.serverProcess.stderr?.on('data', (data: Buffer) => {
+            const message = data.toString();
+            console.error(`[Server] ${message.trim()}`);
+        });
+
+        this.serverProcess.on('exit', (code, signal) => {
+            console.error(`[Server] Process exited with code ${code}, signal ${signal}`);
+            this.isConnected = false;
+            this._onConnectionStatusChanged.fire(false);
+        });
+
+        this.serverProcess.on('error', (error) => {
+            console.error('[Server] Process error:', error);
+            this.isConnected = false;
+            this._onConnectionStatusChanged.fire(false);
+        });
+
+        // Wait a bit for server to start
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    /**
+     * Tente de se connecter au serveur Named Pipe existant
+     */
+    private async tryConnect(): Promise<boolean> {
+        return new Promise<boolean>((resolve) => {
+            const pipePath = getPipePath();
+            
+            console.error(`[RPC Client] Trying to connect to Named Pipe: ${pipePath}`);
+            
+            const timeout = setTimeout(() => {
+                if (this.pipeStream) {
+                    this.pipeStream.destroy();
+                    this.pipeStream = null;
+                }
+                resolve(false);
+            }, 1000);
+
+            this.pipeStream = net.connect(pipePath);
+
+            this.pipeStream.once('connect', () => {
+                clearTimeout(timeout);
+                this.setupConnection();
+                resolve(true);
+            });
+
+            this.pipeStream.once('error', () => {
+                clearTimeout(timeout);
+                if (this.pipeStream) {
+                    this.pipeStream.destroy();
+                    this.pipeStream = null;
+                }
+                resolve(false);
+            });
+        });
+    }
+
+    /**
+     * Configure la connexion JSON-RPC sur le Named Pipe
+     */
+    private setupConnection(): void {
+        if (!this.pipeStream) {
+            return;
+        }
+
+        console.error('[RPC Client] Setting up JSON-RPC over Named Pipe');
+
+        // Handle pipe errors and closure
+        this.pipeStream.on('error', (error) => {
+            console.error('[RPC Client] Named Pipe error:', error);
+            vscode.window.showErrorMessage(`Connection to Dataverse RPC server lost: ${error.message}`);
+            this.isConnected = false;
+            this._onConnectionStatusChanged.fire(false);
+        });
+
+        this.pipeStream.on('close', () => {
+            console.error('[RPC Client] Named Pipe closed');
+            this.isConnected = false;
+            this._onConnectionStatusChanged.fire(false);
+        });
+
+        // Create JSON-RPC connection using newline-delimited protocol
+        const reader = new NewlineDelimitedMessageReader(this.pipeStream);
+        const writer = new NewlineDelimitedMessageWriter(this.pipeStream);
+        this.connection = createMessageConnection(reader, writer);
+
+        // Enable trace for debugging
+        this.connection.trace(2, {
+            log: (message: string) => console.log(`[JSON-RPC TRACE] ${message}`)
+        });
+
+        // Handle connection errors
+        this.connection.onError((error: any) => {
+            console.error('[RPC Client] JSON-RPC error:', error);
+        });
+
+        this.connection.onClose(() => {
+            console.error('[RPC Client] JSON-RPC connection closed');
+            this.isConnected = false;
+        });
+
+        // Start listening
+        this.connection.listen();
+    }
+
+    /**
+     * Ferme la connexion Named Pipe (peut tuer le serveur si nécessaire)
      */
     async disconnect(): Promise<void> {
+        console.error('[RPC Client] Disconnecting from Named Pipe server...');
+
         if (this.connection) {
             this.connection.dispose();
             this.connection = null;
         }
 
-        if (this.process) {
-            this.process.kill();
-            this.process = null;
+        if (this.pipeStream) {
+            this.pipeStream.destroy();
+            this.pipeStream = null;
+        }
+
+        // Optionally kill the server process if we started it
+        if (this.serverProcess) {
+            console.error('[RPC Client] Terminating server process...');
+            this.serverProcess.kill();
+            this.serverProcess = null;
         }
 
         this.isConnected = false;
+        this._onConnectionStatusChanged.fire(false);
+        console.error('[RPC Client] Disconnected');
     }
 
     /**
@@ -232,6 +380,22 @@ export class DataverseMCPToolBoxRpcClient {
     async callTool(request: ToolCallRequest): Promise<ToolCallResult> {
         this.ensureConnected();
         return await this.connection!.sendRequest('CallTool', { request });
+    }
+
+    /**
+     * Get server version information
+     */
+    async getServerVersion(): Promise<ServerVersionInfo> {
+        this.ensureConnected();
+        return await this.connection!.sendRequest('GetServerVersion');
+    }
+
+    /**
+     * Shutdown the server gracefully (for upgrades)
+     */
+    async shutdownServer(): Promise<void> {
+        this.ensureConnected();
+        await this.connection!.sendRequest('ShutdownServer');
     }
 
     private ensureConnected(): void {

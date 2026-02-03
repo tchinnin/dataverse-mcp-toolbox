@@ -26,4 +26,8 @@ public interface IDataverseMCPToolBoxRpcService
     // Tool management
     Task<List<ToolInfo>> ListToolsAsync();
     Task<ToolCallResult> CallToolAsync(ToolCallRequest request);
+
+    // Server management
+    Task<ServerVersionInfo> GetServerVersionAsync();
+    Task ShutdownServerAsync();
 }

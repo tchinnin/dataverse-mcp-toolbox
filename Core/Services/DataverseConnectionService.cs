@@ -95,9 +95,15 @@ public class DataverseConnectionService : IDisposable
 
             // Étape 4: Récupérer les informations de l'utilisateur
             var userId = serviceClient.OAuthUserId;
-            var connectionId = Guid.NewGuid().ToString();
             
-            // Stocker la connexion active
+            // Use provided connection ID if exists (re-auth), otherwise create new one
+            string connectionId = !string.IsNullOrEmpty(request.ConnectionId) 
+                ? request.ConnectionId 
+                : Guid.NewGuid().ToString();
+
+            Console.Error.WriteLine($"[DataverseConnectionService] Using connection ID: {connectionId} (provided: {!string.IsNullOrEmpty(request.ConnectionId)})");
+            
+            // Store/Update the connection in memory
             _activeConnections[connectionId] = serviceClient;
 
             // Persister dans l'état partagé avec les tokens pour permettre la recréation
@@ -154,7 +160,9 @@ public class DataverseConnectionService : IDisposable
         }
 
         // Check persisted state (may be from another instance)
+#pragma warning disable VSTHRD002
         var connectionInfo = _connectionStateService.GetConnectionAsync(connectionId).GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
         if (connectionInfo != null && connectionInfo.IsValid)
         {
             Console.Error.WriteLine($"[DataverseConnectionService] Connection {connectionId} found in shared state but not in memory");
@@ -337,7 +345,9 @@ public class DataverseConnectionService : IDisposable
     /// </summary>
     public void Dispose()
     {
+#pragma warning disable VSTHRD002
         CloseAllConnectionsAsync().GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
         GC.SuppressFinalize(this);
     }
 }

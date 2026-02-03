@@ -18,6 +18,7 @@ import { MCPConfigurationService } from './services/MCPConfigurationService';
 let rpcClient: DataverseMCPToolBoxRpcClient;
 let serverManager: ServerManager;
 let mcpConfigService: MCPConfigurationService;
+let serverStatusBar: vscode.StatusBarItem;
 
 /**
  * Extension activation entry point
@@ -59,6 +60,25 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize RPC client
     rpcClient = new DataverseMCPToolBoxRpcClient();
     
+    // Create status bar item for server connection status
+    serverStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    serverStatusBar.command = 'dataversemcptoolbox.openServerActions';
+    serverStatusBar.tooltip = 'Click to manage Dataverse MCP Server';
+    updateServerStatusBar(false); // Initially disconnected
+    serverStatusBar.show();
+    context.subscriptions.push(serverStatusBar);
+    
+    // Subscribe to connection status changes
+    context.subscriptions.push(
+        rpcClient.onConnectionStatusChanged((connected) => {
+            updateServerStatusBar(connected);
+            updateConnectionContext(connected);
+            // Refresh tree views when connection status changes
+            treeDataProvider.refresh();
+            pluginsTreeProvider.refresh();
+        })
+    );
+    
     // Initialize plugins tree provider (will be populated after RPC connection)
     const pluginsTreeProvider = new PluginsTreeProvider(rpcClient);
     const pluginsTreeView = vscode.window.createTreeView('dataversemcptoolbox.pluginsView', {
@@ -76,7 +96,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(serverInfoTreeView);
 
     // Ensure server is installed and connect to it
-    ensureServerAndConnect(context, pluginsTreeProvider, serverInfoProvider)
+    ensureServerAndConnect(context, treeDataProvider, pluginsTreeProvider, serverInfoProvider)
         .catch((error) => {
             console.error('Failed to initialize Dataverse MCP Server:', error);
             vscode.window.showErrorMessage(
@@ -84,7 +104,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 'Retry'
             ).then((selection) => {
                 if (selection === 'Retry') {
-                    ensureServerAndConnect(context, pluginsTreeProvider, serverInfoProvider);
+                    ensureServerAndConnect(context, treeDataProvider, pluginsTreeProvider, serverInfoProvider);
                 }
             });
         });
@@ -93,6 +113,58 @@ export async function activate(context: vscode.ExtensionContext) {
     registerCommands(context, storageService, tokenStorageService, treeDataProvider, rpcClient);
     registerPluginCommands(context, rpcClient, pluginsTreeProvider);
     registerServerCommands(context, serverManager, rpcClient, serverInfoProvider, mcpConfigService);
+
+    // Register command to open server actions
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataversemcptoolbox.openServerActions', async () => {
+            const items: vscode.QuickPickItem[] = [];
+            
+            if (!rpcClient.isServerConnected()) {
+                items.push({
+                    label: '$(refresh) Reload VS Code',
+                    description: 'Restart VS Code to let GitHub Copilot start the server',
+                    detail: 'The server should be automatically started by GitHub Copilot via MCP configuration'
+                });
+                items.push({
+                    label: '$(file-code) Open MCP Configuration',
+                    description: 'View or edit mcp.json',
+                    detail: mcpConfigService.getMcpConfigPath()
+                });
+                items.push({
+                    label: '$(output) Show Output',
+                    description: 'View extension logs'
+                });
+            } else {
+                items.push({
+                    label: '$(check) Server Connected',
+                    description: 'Dataverse MCP Server is running'
+                });
+                items.push({
+                    label: '$(info) Show Server Info',
+                    description: 'View server version and status'
+                });
+            }
+            
+            const selection = await vscode.window.showQuickPick(items, {
+                title: 'Dataverse MCP Server Actions',
+                placeHolder: 'Select an action'
+            });
+            
+            if (!selection) {
+                return;
+            }
+            
+            if (selection.label.includes('Reload VS Code')) {
+                await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            } else if (selection.label.includes('Open MCP Configuration')) {
+                await vscode.commands.executeCommand('dataversemcptoolbox.openMcpConfiguration');
+            } else if (selection.label.includes('Show Output')) {
+                vscode.commands.executeCommand('workbench.action.output.toggleOutput');
+            } else if (selection.label.includes('Show Server Info')) {
+                vscode.commands.executeCommand('dataversemcptoolbox.serverInfoView.focus');
+            }
+        })
+    );
 
     // Register update server command
     context.subscriptions.push(
@@ -104,7 +176,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     await checkAndNotifyServerUpdate(context, serverInfoProvider);
                 } else {
                     vscode.window.showInformationMessage(
-                        `Dataverse MCP Server is up to date (v${versionInfo.installedVersion || 'unknown'})`
+                        `Dataverse MCP Server is up to date (v${versionInfo.currentVersion || 'unknown'})`
                     );
                 }
             } catch (error) {
@@ -132,52 +204,95 @@ export async function activate(context: vscode.ExtensionContext) {
 /**
  * Ensure server is installed and connect to it
  */
-async function ensureServerAndConnect(context: vscode.ExtensionContext, pluginsTreeProvider: PluginsTreeProvider, serverInfoProvider: ServerInfoTreeProvider): Promise<void> {
-    // Download/verify server installation with progress
+async function ensureServerAndConnect(
+    context: vscode.ExtensionContext, 
+    treeDataProvider: ConnectionsTreeDataProvider,
+    pluginsTreeProvider: PluginsTreeProvider, 
+    serverInfoProvider: ServerInfoTreeProvider
+): Promise<void> {
+    // Check if server binary exists
     const serverPath = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: 'Setting up Dataverse MCP Server...',
         cancellable: false
     }, async (progress) => {
         progress.report({ message: 'Checking installation...' });
-        return await serverManager.ensureServerInstalled();
+        try {
+            return await serverManager.ensureServerInstalled();
+        } catch (error) {
+            // First install - binary not found
+            progress.report({ message: 'Downloading latest version from NuGet...' });
+            return await serverManager.ensureServerInstalled();
+        }
     });
 
-    console.error(`[Extension] Server ready at: ${serverPath}`);
+    console.error(`[Extension] Server binary ready at: ${serverPath}`);
 
     // Set up plugin directory in globalStoragePath (survives extension updates)
     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
     console.error(`[Extension] Plugin directory: ${pluginDirectory}`);
 
     // Ensure the plugins directory exists
-    if (!require('fs').existsSync(pluginDirectory)) {
-        require('fs').mkdirSync(pluginDirectory, { recursive: true });
+    if (!fs.existsSync(pluginDirectory)) {
+        fs.mkdirSync(pluginDirectory, { recursive: true });
     }
 
-    // CONNECTION STATE SHARING ARCHITECTURE:
-    // 1. Extension RPC server (Content-Length protocol, no --mcp flag)
-    // 2. MCP RPC server (newline-delimited, with --mcp flag) - registered in mcp.json
-    // 3. Both servers share connection state via persisted connection file
-    //
-    // When Extension creates a connection, it:
-    // - Saves connection info to file system
-    // - Both Extension and MCP instances can read this file
-    // - Active connection is synchronized via file system
-    
     // Register MCP server in VS Code global configuration
-    try {
-        await mcpConfigService.registerMcpServer(serverPath, pluginDirectory, false);
-        console.error('[Extension] Dataverse MCP server registered in VS Code MCP configuration');
-        console.error('[Extension] ℹ️  Reload VS Code to activate the MCP server for GitHub Copilot');
-        console.error('[Extension] ℹ️  Connection state shared via file system between instances');
-    } catch (error) {
-        console.error('[Extension] Failed to register MCP server in VS Code configuration:', error);
-        // Non-fatal error - extension can still function
+    // This allows GitHub Copilot to start the server automatically
+    const pipeName = rpcClient.getPipeName();
+    const needsReload = await mcpConfigService.registerMcpServer(serverPath, pluginDirectory, pipeName, false);
+    console.error('[Extension] Dataverse MCP server registered in VS Code MCP configuration');
+    
+    if (needsReload) {
+        const selection = await vscode.window.showInformationMessage(
+            'Dataverse MCP Server has been registered. Please reload VS Code to activate the server for GitHub Copilot.',
+            'Reload Now',
+            'Later'
+        );
+        
+        if (selection === 'Reload Now') {
+            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            return; // Exit as window will reload
+        } else {
+            vscode.window.showWarningMessage(
+                'Dataverse MCP Server features will not be available until you reload VS Code.'
+            );
+            return; // Don't try to connect
+        }
     }
 
-    // Connect to RPC server with plugin directory
-    await rpcClient.connect(serverPath, pluginDirectory);
-    console.error('[Extension] Connected to Dataverse RPC server');
+    // Connect to RPC server (should be started by Copilot)
+    try {
+        const serverPath = await serverManager.ensureServerInstalled();
+        const pluginDirectory = path.join(context.globalStorageUri.fsPath, 'plugins');
+        await rpcClient.connect(serverPath, pluginDirectory);
+        console.error('[Extension] Connected to Dataverse RPC server');
+        updateServerStatusBar(true);
+        updateConnectionContext(true);
+    } catch (error) {
+        console.error('[Extension] Failed to connect to server:', error);
+        updateServerStatusBar(false);
+        updateConnectionContext(false);
+        vscode.window.showErrorMessage(
+            'Could not connect to Dataverse MCP Server. The server should be started by GitHub Copilot. ' +
+            'Try reloading VS Code to ensure MCP configuration is loaded.',
+            'Reload Now',
+            'Open MCP Config'
+        ).then(selection => {
+            if (selection === 'Reload Now') {
+                vscode.commands.executeCommand('workbench.action.reloadWindow');
+            } else if (selection === 'Open MCP Config') {
+                vscode.commands.executeCommand('dataversemcptoolbox.openMcpConfiguration');
+            }
+        });
+        throw error;
+    }
+
+    // Set RPC client reference in ServerManager for version queries
+    serverManager.setRpcClient(rpcClient);
+
+    // Set RPC client in tree providers for server status checking
+    treeDataProvider.setRpcClient(rpcClient);
 
     // Close any lingering RPC connections from previous sessions
     try {
@@ -186,10 +301,6 @@ async function ensureServerAndConnect(context: vscode.ExtensionContext, pluginsT
     } catch (error) {
         console.error('Error closing lingering connections:', error);
     }
-
-    // For backward compatibility, still call setPluginDirectory (now it's a no-op)
-    await rpcClient.setPluginDirectory(pluginDirectory);
-    console.error(`[Extension] Plugin directory configured`);
 
     // Check if bundled plugins have been installed
     const bundledPluginsInstalled = context.globalState.get<boolean>('bundledPluginsInstalled', false);
@@ -237,7 +348,7 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
         const versionInfo = await serverManager.checkForUpdates();
 
         if (versionInfo.updateAvailable) {
-            const currentVersion = versionInfo.installedVersion || 'unknown';
+            const currentVersion = versionInfo.currentVersion || 'unknown';
             const latestVersion = versionInfo.latestVersion;
 
             const selection = await vscode.window.showInformationMessage(
@@ -252,23 +363,30 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
                     title: `Updating Dataverse MCP Server to v${latestVersion}...`,
                     cancellable: false
                 }, async (progress) => {
-                    progress.report({ message: 'Downloading...' });
+                    progress.report({ message: 'Shutting down server...' });
 
-                    // Disconnect current server
-                    await rpcClient.disconnect();
-
-                    // Upgrade server
+                    // Upgrade server (includes graceful shutdown)
+                    progress.report({ message: 'Downloading new version...' });
                     const newServerPath = await serverManager.upgradeServer();
 
-                    // Reconnect with new version
-                    progress.report({ message: 'Restarting server...' });
+                    // Update MCP configuration with new path
                     const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-                    await rpcClient.connect(newServerPath, pluginDirectory);
+                    const pipeName = rpcClient.getPipeName();
+                    await mcpConfigService.registerMcpServer(newServerPath, pluginDirectory, pipeName, false);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();
 
-                    vscode.window.showInformationMessage(`Successfully updated to Dataverse MCP Server v${latestVersion}`);
+                    // Prompt to reload VS Code
+                    const reloadSelection = await vscode.window.showInformationMessage(
+                        `Successfully updated to Dataverse MCP Server v${latestVersion}. Please reload VS Code to start the new version.`,
+                        'Reload Now',
+                        'Later'
+                    );
+
+                    if (reloadSelection === 'Reload Now') {
+                        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+                    }
                 });
             }
         }
@@ -367,6 +485,28 @@ async function installBundledPlugins(
             `Failed to install bundled plugins. Check output for details.`
         );
     }
+}
+
+/**
+ * Update status bar item based on connection status
+ */
+function updateServerStatusBar(connected: boolean): void {
+    if (connected) {
+        serverStatusBar.text = '$(check) Dataverse Server';
+        serverStatusBar.backgroundColor = undefined;
+        serverStatusBar.tooltip = 'Dataverse MCP Server is connected. Click for options.';
+    } else {
+        serverStatusBar.text = '$(warning) Dataverse Server';
+        serverStatusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        serverStatusBar.tooltip = 'Dataverse MCP Server is not running. Click to troubleshoot.';
+    }
+}
+
+/**
+ * Update VS Code context for command enablement
+ */
+function updateConnectionContext(connected: boolean): void {
+    vscode.commands.executeCommand('setContext', 'dataversemcptoolbox.serverConnected', connected);
 }
 
 /**

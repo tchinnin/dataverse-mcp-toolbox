@@ -3,27 +3,29 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import AdmZip = require('adm-zip');
-
-/**
- * Server version information
- */
-export interface ServerVersionInfo {
-    installedVersion: string | null;
-    latestVersion: string;
-    updateAvailable: boolean;
-}
+import { UpdateCheckResult, ServerVersionInfo } from '../models/ServerVersionInfo';
+import type { DataverseMCPToolBoxRpcClient } from './DataverseMCPToolBoxRpcClient';
 
 /**
  * Manages MCP server binary lifecycle: download, installation, and updates
+ * Note: This class does NOT start the server - that's handled by GitHub Copilot via MCP configuration
  */
 export class ServerManager {
     private static readonly PACKAGE_ID = 'DataverseMCPToolBox.Server';
     private readonly context: vscode.ExtensionContext;
     private readonly outputChannel: vscode.OutputChannel;
+    private rpcClient: DataverseMCPToolBoxRpcClient | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.outputChannel = vscode.window.createOutputChannel('Dataverse MCP Server');
+    }
+
+    /**
+     * Set the RPC client for querying running server information
+     */
+    setRpcClient(client: DataverseMCPToolBoxRpcClient): void {
+        this.rpcClient = client;
     }
 
     /**
@@ -67,8 +69,9 @@ export class ServerManager {
 
     /**
      * Check for available server updates
+     * Compares installed binary version with NuGet and running server version
      */
-    async checkForUpdates(): Promise<ServerVersionInfo> {
+    async checkForUpdates(): Promise<UpdateCheckResult> {
         // Throttle update checks to once per day
         const lastCheck = this.context.globalState.get<number>('lastUpdateCheck', 0);
         const oneDayMs = 24 * 60 * 60 * 1000;
@@ -79,7 +82,7 @@ export class ServerManager {
         if (now - lastCheck < oneDayMs) {
             this.outputChannel.appendLine('Skipping update check (checked recently)');
             return {
-                installedVersion,
+                currentVersion: installedVersion,
                 latestVersion: installedVersion || 'unknown',
                 updateAvailable: false
             };
@@ -91,20 +94,33 @@ export class ServerManager {
             const latestVersion = await this.getLatestVersionFromNuGet();
             await this.context.globalState.update('lastUpdateCheck', now);
 
+            // Get running server version if connected
+            let runningServerVersion: string | undefined;
+            if (this.rpcClient) {
+                try {
+                    const serverInfo = await this.rpcClient.getServerVersion();
+                    runningServerVersion = serverInfo.version;
+                    this.outputChannel.appendLine(`Running server version: v${runningServerVersion}`);
+                } catch (error) {
+                    this.outputChannel.appendLine('Could not query running server version (server may not be running)');
+                }
+            }
+
             const updateAvailable = installedVersion !== null && this.compareVersions(latestVersion, installedVersion) > 0;
 
             this.outputChannel.appendLine(`Installed: v${installedVersion || 'none'}, Latest: v${latestVersion}, Update available: ${updateAvailable}`);
 
             return {
-                installedVersion,
+                currentVersion: installedVersion,
                 latestVersion,
-                updateAvailable
+                updateAvailable,
+                runningServerVersion
             };
         } catch (error) {
             console.error('Failed to check for updates:', error);
             this.outputChannel.appendLine(`Update check failed: ${error}`);
             return {
-                installedVersion,
+                currentVersion: installedVersion,
                 latestVersion: installedVersion || 'unknown',
                 updateAvailable: false
             };
@@ -113,9 +129,25 @@ export class ServerManager {
 
     /**
      * Upgrade server to latest version
+     * Attempts graceful shutdown of running server if RPC client is available
      */
     async upgradeServer(): Promise<string> {
         this.outputChannel.appendLine('Upgrading server...');
+
+        // Attempt graceful shutdown of running server
+        if (this.rpcClient) {
+            try {
+                this.outputChannel.appendLine('Requesting graceful server shutdown...');
+                await this.rpcClient.shutdownServer();
+                this.outputChannel.appendLine('Server shutdown initiated');
+                
+                // Wait a moment for shutdown to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                this.outputChannel.appendLine(`Note: Could not shutdown running server: ${error}`);
+                this.outputChannel.appendLine('Proceeding with upgrade (server may need manual restart)');
+            }
+        }
 
         const config = vscode.workspace.getConfiguration('dataverse.server');
         const enforcedVersion = config.get<string>('enforcedVersion') || '';
@@ -163,12 +195,18 @@ export class ServerManager {
     }
 
     /**
-     * Get path to server executable for a given version
+     * Get path to server executable for installed version
+     * Used by MCPConfigurationService to register server in mcp.json
      */
-    private getServerExecutablePath(version: string): string {
+    getServerExecutablePath(version?: string): string {
+        const actualVersion = version || this.getInstalledVersion();
+        if (!actualVersion) {
+            throw new Error('No server version installed');
+        }
+        
         const platform = this.getPlatform();
         const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
-        return path.join(this.context.globalStoragePath, 'server', version, platform, executableName);
+        return path.join(this.context.globalStoragePath, 'server', actualVersion, platform, executableName);
     }
 
     /**

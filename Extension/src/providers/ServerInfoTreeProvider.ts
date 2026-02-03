@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { ServerManager, ServerVersionInfo } from '../services/ServerManager';
+import { ServerManager } from '../services/ServerManager';
+import { UpdateCheckResult } from '../models/ServerVersionInfo';
 
 /**
  * Tree item types for server info panel
@@ -78,7 +79,7 @@ export class ServerInfoTreeProvider implements vscode.TreeDataProvider<ServerInf
     private _onDidChangeTreeData: vscode.EventEmitter<ServerInfoItem | undefined | null | void> = new vscode.EventEmitter<ServerInfoItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<ServerInfoItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    private versionInfo: ServerVersionInfo | null = null;
+    private versionInfo: UpdateCheckResult | null = null;
     private isCheckingUpdate: boolean = false;
 
     constructor(private serverManager: ServerManager) {}
@@ -144,7 +145,7 @@ export class ServerInfoTreeProvider implements vscode.TreeDataProvider<ServerInf
         if (this.versionInfo) {
             items.push(new VersionItem(
                 'Installed Version',
-                this.versionInfo.installedVersion || 'Not installed',
+                this.versionInfo.currentVersion || 'Not installed',
                 'installed'
             ));
 

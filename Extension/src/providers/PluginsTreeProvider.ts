@@ -31,9 +31,9 @@ export class PluginTreeItem extends vscode.TreeItem {
 /**
  * Tree data provider for plugins and their tools
  */
-export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<PluginTreeItem | undefined | null | void> = new vscode.EventEmitter<PluginTreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<PluginTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeItem | vscode.TreeItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<PluginTreeItem | vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<PluginTreeItem | vscode.TreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<PluginTreeItem | vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private plugins: PluginInfo[] = [];
 
@@ -50,12 +50,18 @@ export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeIt
      * Load plugins from RPC server
      */
     async loadPlugins(): Promise<void> {
+        if (!this.rpcClient.isServerConnected()) {
+            console.error('[PluginsTree] Cannot load plugins - server not connected');
+            this.plugins = [];
+            this.refresh();
+            return;
+        }
+
         try {
             this.plugins = await this.rpcClient.listPlugins();
             this.refresh();
         } catch (error) {
             console.error('Failed to load plugins:', error);
-            vscode.window.showErrorMessage(`Failed to load plugins: ${error}`);
             this.plugins = [];
             this.refresh();
         }
@@ -64,15 +70,24 @@ export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeIt
     /**
      * Get tree item
      */
-    getTreeItem(element: PluginTreeItem): vscode.TreeItem {
+    getTreeItem(element: PluginTreeItem | vscode.TreeItem): vscode.TreeItem {
         return element;
     }
 
     /**
      * Get children for a tree item
      */
-    async getChildren(element?: PluginTreeItem): Promise<PluginTreeItem[]> {
+    async getChildren(element?: PluginTreeItem | vscode.TreeItem): Promise<Array<PluginTreeItem | vscode.TreeItem>> {
         if (!element) {
+            // Show warning if server not connected
+            if (!this.rpcClient.isServerConnected()) {
+                const warningItem = new vscode.TreeItem('⚠️ Server Not Running', vscode.TreeItemCollapsibleState.None);
+                warningItem.tooltip = 'The Dataverse MCP Server must be started by GitHub Copilot.\nClick the status bar to troubleshoot or reload VS Code.';
+                warningItem.description = 'Click status bar for help';
+                warningItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+                return [warningItem];
+            }
+
             // Root level: return plugins
             if (this.plugins.length === 0) {
                 return [];
@@ -86,9 +101,9 @@ export class PluginsTreeProvider implements vscode.TreeDataProvider<PluginTreeIt
                     plugin
                 )
             );
-        } else if (element.contextValue === 'plugin' && element.plugin) {
-            // Child level: return tools for this plugin
-            return element.plugin.tools.map(tool =>
+        } else if (element instanceof PluginTreeItem && element.contextValue === 'plugin' && element.plugin) {
+            // Child level: return tools for a plugin
+            return element.plugin.tools.map((tool: ToolInfo) =>
                 new PluginTreeItem(
                     tool.name,
                     vscode.TreeItemCollapsibleState.None,

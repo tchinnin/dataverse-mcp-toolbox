@@ -1,0 +1,496 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>DataverseMCPToolBox.Extensibility</name>
+    </assembly>
+    <members>
+        <member name="T:DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext">
+            <summary>
+            Provides access to an authenticated Dataverse connection and execution context.
+            Passed to tools during execution to perform Dataverse operations.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext.ServiceClient">
+            <summary>
+            Gets the authenticated Dataverse service client for performing operations.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext.ConnectionId">
+            <summary>
+            Gets the unique identifier for this connection.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext.OrganizationUrl">
+            <summary>
+            Gets the Dataverse organization URL.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext.CancellationToken">
+            <summary>
+            Gets the cancellation token for the current execution context.
+            Tools should respect this token for long-running operations.
+            </summary>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Abstractions.IMcpTool">
+            <summary>
+            Defines the contract for an MCP tool that can be discovered and invoked by AI assistants.
+            Tools represent discrete Dataverse operations exposed through the MCP protocol.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IMcpTool.Name">
+            <summary>
+            Gets the unique name of the tool in kebab-case format (e.g., "list-entities", "create-record").
+            This name is used by AI assistants to identify and invoke the tool.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IMcpTool.Description">
+            <summary>
+            Gets the human-readable description of what the tool does.
+            This description is shown to AI assistants to help them understand when to use the tool.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Abstractions.IMcpTool.InputSchema">
+            <summary>
+            Gets the JSON Schema that defines the structure of input parameters for this tool.
+            The schema is used for validation and to inform AI assistants about required/optional parameters.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Abstractions.IMcpTool.ExecuteAsync(System.String,DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext,System.Threading.CancellationToken)">
+            <summary>
+            Executes the tool with the provided parameters and Dataverse context.
+            </summary>
+            <param name="parametersJson">JSON string containing the tool parameters matching the InputSchema</param>
+            <param name="context">Dataverse connection context for performing operations</param>
+            <param name="cancellationToken">Cancellation token to abort long-running operations</param>
+            <returns>Tool execution result containing success status and output content or error details</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Abstractions.IPlugin">
+            <summary>
+            Defines the lifecycle contract for MCP plugins.
+            Plugins are discovered at runtime and initialized by the host server.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Abstractions.IPlugin.InitializeAsync(System.IServiceProvider,System.Threading.CancellationToken)">
+            <summary>
+            Initializes the plugin with the provided service provider.
+            Called once during plugin discovery and registration.
+            </summary>
+            <param name="serviceProvider">Service provider for resolving dependencies</param>
+            <param name="cancellationToken">Cancellation token for initialization</param>
+            <returns>Task representing the asynchronous initialization</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Abstractions.IToolProvider">
+            <summary>
+            Defines the contract for plugins that provide MCP tools.
+            Plugins implementing this interface will have their tools discovered and exposed by the MCP server.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Abstractions.IToolProvider.GetTools">
+            <summary>
+            Gets the collection of MCP tools provided by this plugin.
+            Called after plugin initialization to register tools with the MCP server.
+            </summary>
+            <returns>Enumerable collection of MCP tools</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute">
+            <summary>
+            Attribute to mark a class as an MCP plugin.
+            Used for plugin discovery and metadata collection.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute.Name">
+            <summary>
+            Gets or sets the unique name of the plugin.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute.Version">
+            <summary>
+            Gets or sets the semantic version of the plugin (e.g., "1.0.0").
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute.Author">
+            <summary>
+            Gets or sets the author of the plugin.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute.Description">
+            <summary>
+            Gets or sets the description of the plugin's functionality.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Attributes.McpPluginAttribute.#ctor(System.String,System.String)">
+            <summary>
+            Initializes a new instance of McpPluginAttribute.
+            </summary>
+            <param name="name">The unique name of the plugin</param>
+            <param name="version">The semantic version of the plugin</param>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Attributes.McpToolAttribute">
+            <summary>
+            Attribute to mark a method in a PluginBase-derived class as an MCP tool.
+            Used for automatic tool discovery and registration.
+            The method must return Task&lt;object&gt; and accept parameters matching the tool's input schema.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpToolAttribute.Name">
+            <summary>
+            Gets or sets the unique name of the tool in kebab-case format.
+            If not specified, the method name will be converted to kebab-case.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Attributes.McpToolAttribute.Description">
+            <summary>
+            Gets or sets the description of what the tool does.
+            This description is shown to AI assistants to help them understand when to use the tool.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Attributes.McpToolAttribute.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of McpToolAttribute.
+            </summary>
+            <param name="description">The description of the tool's functionality</param>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException">
+            <summary>
+            Exception thrown when a tool execution fails.
+            Provides structured error information that can be serialized and returned to the MCP client.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.ErrorCode">
+            <summary>
+            Gets the error code identifying the type of failure.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.ErrorDetails">
+            <summary>
+            Gets additional details about the error.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.#ctor(System.String,System.String)">
+            <summary>
+            Initializes a new instance of ToolExecutionException with an error code and message.
+            </summary>
+            <param name="errorCode">The error code</param>
+            <param name="message">The error message</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.#ctor(System.String,System.String,System.Object)">
+            <summary>
+            Initializes a new instance of ToolExecutionException with an error code, message, and details.
+            </summary>
+            <param name="errorCode">The error code</param>
+            <param name="message">The error message</param>
+            <param name="details">Additional error details</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.#ctor(System.String,System.String,System.Exception)">
+            <summary>
+            Initializes a new instance of ToolExecutionException with an error code, message, and inner exception.
+            </summary>
+            <param name="errorCode">The error code</param>
+            <param name="message">The error message</param>
+            <param name="innerException">The inner exception</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Exceptions.ToolExecutionException.#ctor(System.String,System.String,System.Object,System.Exception)">
+            <summary>
+            Initializes a new instance of ToolExecutionException with an error code, message, details, and inner exception.
+            </summary>
+            <param name="errorCode">The error code</param>
+            <param name="message">The error message</param>
+            <param name="details">Additional error details</param>
+            <param name="innerException">The inner exception</param>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator">
+            <summary>
+            Utility class for generating JSON schemas from C# types and method signatures.
+            Uses NJsonSchema with camelCase serialization matching the server conventions.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.GenerateSchema``1">
+            <summary>
+            Generates a JSON schema for the specified type.
+            Properties will be serialized in camelCase.
+            </summary>
+            <typeparam name="T">The type to generate schema for</typeparam>
+            <returns>JSON schema describing the type structure</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.GenerateSchema(System.Type)">
+            <summary>
+            Generates a JSON schema for the specified type.
+            Properties will be serialized in camelCase.
+            </summary>
+            <param name="type">The type to generate schema for</param>
+            <returns>JSON schema describing the type structure</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.GenerateSchemaFromMethod(System.Reflection.MethodInfo)">
+            <summary>
+            Generates a JSON schema from a method's parameters.
+            Useful for auto-generating tool input schemas from [McpTool] decorated methods.
+            </summary>
+            <param name="method">The method to analyze</param>
+            <returns>JSON schema with properties matching method parameters</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.ToCamelCase(System.String)">
+            <summary>
+            Converts a string to camelCase format.
+            </summary>
+            <param name="value">The string to convert</param>
+            <returns>camelCase formatted string</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.ToKebabCase(System.String)">
+            <summary>
+            Converts a PascalCase or camelCase string to kebab-case format.
+            Used for tool name normalization.
+            </summary>
+            <param name="value">The value to convert</param>
+            <returns>kebab-case formatted string</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Helpers.SchemaGenerator.IsValidKebabCase(System.String)">
+            <summary>
+            Validates that a tool name follows kebab-case convention.
+            </summary>
+            <param name="toolName">The tool name to validate</param>
+            <returns>True if the name is valid kebab-case, false otherwise</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.McpToolBase`2">
+            <summary>
+            Generic abstract base class for implementing strongly-typed MCP tools.
+            Handles parameter deserialization, schema generation, and result wrapping.
+            Tool names are validated to enforce kebab-case convention.
+            </summary>
+            <typeparam name="TInput">The input parameter type for the tool</typeparam>
+            <typeparam name="TOutput">The output result type from the tool</typeparam>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.McpToolBase`2.Name">
+            <inheritdoc />
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.McpToolBase`2.Description">
+            <inheritdoc />
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.McpToolBase`2.InputSchema">
+            <inheritdoc />
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.McpToolBase`2.#ctor(System.String,System.String)">
+            <summary>
+            Initializes a new instance of McpToolBase with the specified name and description.
+            Tool name must be in kebab-case format (e.g., "list-entities", "create-record").
+            </summary>
+            <param name="name">The unique name of the tool in kebab-case format</param>
+            <param name="description">The description of what the tool does</param>
+            <exception cref="T:System.ArgumentException">Thrown when tool name is not in kebab-case format</exception>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.McpToolBase`2.ExecuteAsync(System.String,DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.McpToolBase`2.LogError(System.String)">
+            <summary>
+            Logs an error message with the tool class name prefix.
+            </summary>
+            <param name="message">The message to log</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.McpToolBase`2.LogInfo(System.String)">
+            <summary>
+            Logs an informational message with the tool class name prefix.
+            </summary>
+            <param name="message">The message to log</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.McpToolBase`2.ExecuteAsync(`0,DataverseMCPToolBox.Extensibility.Abstractions.IDataverseContext,System.Threading.CancellationToken)">
+            <summary>
+            Executes the tool logic with strongly-typed parameters.
+            Override this method to implement the tool's functionality.
+            </summary>
+            <param name="parameters">The deserialized and validated input parameters</param>
+            <param name="context">The Dataverse connection context</param>
+            <param name="cancellationToken">Cancellation token to abort long-running operations</param>
+            <returns>The tool's output result</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Models.ConnectionContext">
+            <summary>
+            Sealed implementation of IDataverseContext providing access to an authenticated Dataverse connection.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ConnectionContext.ServiceClient">
+            <inheritdoc />
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ConnectionContext.ConnectionId">
+            <inheritdoc />
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ConnectionContext.OrganizationUrl">
+            <inheritdoc />
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ConnectionContext.CancellationToken">
+            <inheritdoc />
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Models.ConnectionContext.#ctor(Microsoft.PowerPlatform.Dataverse.Client.IOrganizationServiceAsync2,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Initializes a new instance of ConnectionContext.
+            </summary>
+            <param name="serviceClient">The authenticated Dataverse service client</param>
+            <param name="connectionId">The connection identifier</param>
+            <param name="organizationUrl">The Dataverse organization URL</param>
+            <param name="cancellationToken">The cancellation token for the execution context</param>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Models.ToolError">
+            <summary>
+            Represents an error that occurred during tool execution.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolError.Code">
+            <summary>
+            Gets or sets the error code identifying the type of error.
+            Common codes: VALIDATION_ERROR, EXECUTION_ERROR, DATAVERSE_ERROR, AUTHORIZATION_ERROR
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolError.Message">
+            <summary>
+            Gets or sets the human-readable error message.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolError.Details">
+            <summary>
+            Gets or sets additional details about the error.
+            Can be any serializable object containing context-specific information.
+            </summary>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult">
+            <summary>
+            Represents the result of an MCP tool execution.
+            Contains either successful output content or error details.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.IsSuccess">
+            <summary>
+            Gets a value indicating whether the tool execution was successful.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.Content">
+            <summary>
+            Gets the output content from a successful tool execution.
+            Null if the execution failed.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.Error">
+            <summary>
+            Gets the error details if the tool execution failed.
+            Null if the execution was successful.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.Success(System.Object)">
+            <summary>
+            Creates a successful tool execution result with content.
+            </summary>
+            <param name="content">The output content from the tool</param>
+            <returns>A successful ToolExecutionResult</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.Failure(DataverseMCPToolBox.Extensibility.Models.ToolError)">
+            <summary>
+            Creates a failed tool execution result with error details.
+            </summary>
+            <param name="error">The error details</param>
+            <returns>A failed ToolExecutionResult</returns>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.Models.ToolExecutionResult.Failure(System.Exception,System.String)">
+            <summary>
+            Creates a failed tool execution result from an exception.
+            </summary>
+            <param name="exception">The exception that occurred</param>
+            <param name="code">Optional error code (defaults to "EXECUTION_ERROR")</param>
+            <returns>A failed ToolExecutionResult</returns>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.PluginBase">
+            <summary>
+            Abstract base class for implementing MCP plugins.
+            Provides automatic tool discovery from [McpTool] decorated methods and plugin lifecycle management.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginBase.Services">
+            <summary>
+            Gets the service provider for resolving dependencies.
+            Available after InitializeAsync is called.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginBase.InitializeAsync(System.IServiceProvider,System.Threading.CancellationToken)">
+            <summary>
+            Initializes the plugin with the provided service provider.
+            Override this method to perform custom initialization logic.
+            </summary>
+            <param name="serviceProvider">Service provider for resolving dependencies</param>
+            <param name="cancellationToken">Cancellation token for initialization</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginBase.LogError(System.String)">
+            <summary>
+            Logs an error message with the plugin class name prefix.
+            </summary>
+            <param name="message">The message to log</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginBase.LogInfo(System.String)">
+            <summary>
+            Logs an informational message with the plugin class name prefix.
+            </summary>
+            <param name="message">The message to log</param>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginBase.GetTools">
+            <summary>
+            Gets the collection of MCP tools provided by this plugin.
+            Automatically discovers methods decorated with [McpTool] attribute.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginBase.Dispose">
+            <summary>
+            Disposes the plugin and releases resources.
+            Override this method to perform custom cleanup logic.
+            </summary>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.PluginBase.MethodTool">
+            <summary>
+            Internal helper class that wraps a [McpTool] decorated method as an IMcpTool.
+            </summary>
+        </member>
+        <member name="T:DataverseMCPToolBox.Extensibility.PluginManifest">
+            <summary>
+            Represents metadata about a discovered plugin.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.Name">
+            <summary>
+            Gets the plugin name.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.Version">
+            <summary>
+            Gets the plugin version.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.Author">
+            <summary>
+            Gets the plugin author.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.Description">
+            <summary>
+            Gets the plugin description.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.PluginType">
+            <summary>
+            Gets the plugin type.
+            </summary>
+        </member>
+        <member name="P:DataverseMCPToolBox.Extensibility.PluginManifest.Assembly">
+            <summary>
+            Gets the assembly containing the plugin.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginManifest.#ctor(System.String,System.String,System.Type,System.Reflection.Assembly)">
+            <summary>
+            Initializes a new instance of PluginManifest.
+            </summary>
+        </member>
+        <member name="M:DataverseMCPToolBox.Extensibility.PluginManifest.DiscoverPlugins(System.Reflection.Assembly[])">
+            <summary>
+            Discovers all plugins in the specified assemblies.
+            Scans for classes decorated with [McpPlugin] attribute that implement IPlugin.
+            </summary>
+            <param name="assemblies">Assemblies to scan for plugins</param>
+            <returns>Collection of discovered plugin manifests</returns>
+        </member>
+    </members>
+</doc>
