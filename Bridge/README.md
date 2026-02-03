@@ -22,6 +22,8 @@ Main Server (DataverseMCPToolBox)
 ## Usage
 This executable is automatically launched by the MCP configuration in VS Code. It should not be run directly by users.
 
+The Bridge requires the `DATAVERSE_MCP_PIPE_NAME` environment variable to be set with the pipe name (e.g., `DataverseMCPToolBox-12345`).
+
 ### MCP Configuration Example
 ```json
 {
@@ -36,7 +38,7 @@ This executable is automatically launched by the MCP configuration in VS Code. I
 
 ## Requirements
 - The main server (`DataverseMCPToolBox`) must be running
-- Named Pipe `DataverseMCPToolBox` must be available
+- Named Pipe `DataverseMCPToolBox-<pid>` must be available (passed via `DATAVERSE_MCP_PIPE_NAME` environment variable)
 - Connection timeout: 10 seconds
 
 ## Logging

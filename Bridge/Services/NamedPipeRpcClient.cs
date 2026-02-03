@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using StreamJsonRpc;
 using Newtonsoft.Json.Serialization;
 using DataverseMCPToolBox.Abstractions;
+using DataverseMCPToolBox.Models;
 
 namespace DataverseMCPToolBox.Bridge.Services;
 
@@ -32,16 +33,10 @@ public class NamedPipeRpcClient : IRpcClient, IDisposable
         }
 
         _pipeName = pipeName;
-        _connectionTimeout = connectionTimeout ?? TimeSpan.FromSeconds(10);
+        _connectionTimeout = connectionTimeout ?? NetworkConstants.DefaultConnectionTimeout;
 
         // Configure JSON formatter with camelCase for TypeScript compatibility
-        _formatter = new JsonMessageFormatter
-        {
-            JsonSerializer =
-            {
-                ContractResolver = new CamelCasePropertyNamesContractResolver()
-            }
-        };
+        _formatter = JsonFormatterFactory.CreateCamelCaseFormatter();
 
         Console.Error.WriteLine($"[NamedPipeRpcClient] Created with pipe name: {_pipeName}");
     }
@@ -72,7 +67,7 @@ public class NamedPipeRpcClient : IRpcClient, IDisposable
             PipeOptions.Asynchronous);
 
         // Connect with timeout
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_connectionTimeout);
 
         try
@@ -125,7 +120,7 @@ public class NamedPipeRpcClient : IRpcClient, IDisposable
             PipeOptions.Asynchronous);
 
         // Connect with timeout
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_connectionTimeout);
 
         try
@@ -266,12 +261,6 @@ public class NamedPipeRpcClient : IRpcClient, IDisposable
             throw new InvalidOperationException($"Remote method '{method}' failed: {ex.Message}", ex);
         }
     }
-
-    /// <summary>
-    /// Get the underlying JSON-RPC connection for advanced scenarios
-    /// (e.g., forwarding stdio streams directly)
-    /// </summary>
-    public StreamJsonRpc.JsonRpc? GetJsonRpcConnection() => _jsonRpc;
 
     /// <summary>
     /// Get the underlying Named Pipe stream for direct forwarding
