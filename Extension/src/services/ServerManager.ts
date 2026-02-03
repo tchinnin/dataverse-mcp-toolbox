@@ -13,11 +13,15 @@ import type { DataverseMCPToolBoxRpcClient } from './DataverseMCPToolBoxRpcClien
 export class ServerManager {
     private static readonly PACKAGE_ID = 'DataverseMCPToolBox.Runtime';
     private readonly context: vscode.ExtensionContext;
+    private readonly globalStorageUri: vscode.Uri;
+    private readonly extensionUri: vscode.Uri;
     private readonly outputChannel: vscode.OutputChannel;
     private rpcClient: DataverseMCPToolBoxRpcClient | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.globalStorageUri = context.globalStorageUri;
+        this.extensionUri = context.extensionUri;
         this.outputChannel = vscode.window.createOutputChannel('Dataverse MCP Server');
     }
 
@@ -31,15 +35,16 @@ export class ServerManager {
     /**
      * Check if running in local development mode with bundled binaries
      * Local dev binaries are in Extension/server/binaries/ (copied by install-local scripts)
+     * @returns Uri to local binary or null if not in local dev mode
      */
-    private checkLocalDevBinaries(): string | null {
+    private checkLocalDevBinaries(): vscode.Uri | null {
         try {
             const platform = this.getPlatform();
             const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
             
             // Check Extension/server/binaries/runtimes/<platform>/native/
-            const localBinaryPath = path.join(
-                this.context.extensionPath,
+            const localBinaryUri = vscode.Uri.joinPath(
+                this.extensionUri,
                 'server',
                 'binaries',
                 'runtimes',
@@ -48,20 +53,22 @@ export class ServerManager {
                 executableName
             );
             
-            if (fs.existsSync(localBinaryPath)) {
-                this.outputChannel.appendLine(`[Local Dev] Found local binary: ${localBinaryPath}`);
+            // BOUNDARY: Uri → fsPath for Node.js fs existence check
+            if (fs.existsSync(localBinaryUri.fsPath)) {
+                this.outputChannel.appendLine(`[Local Dev] Found local binary: ${localBinaryUri.fsPath}`);
                 
                 // Verify Bridge is also present
                 const bridgeName = platform.startsWith('win') 
                     ? 'DataverseMCPToolBox.Bridge.exe' 
                     : 'DataverseMCPToolBox.Bridge';
-                const bridgePath = path.join(path.dirname(localBinaryPath), bridgeName);
+                const bridgeUri = vscode.Uri.joinPath(vscode.Uri.joinPath(localBinaryUri, '..'), bridgeName);
                 
-                if (fs.existsSync(bridgePath)) {
-                    this.outputChannel.appendLine(`[Local Dev] Found Bridge: ${bridgePath}`);
-                    return localBinaryPath;
+                // BOUNDARY: Uri → fsPath for Node.js fs existence check
+                if (fs.existsSync(bridgeUri.fsPath)) {
+                    this.outputChannel.appendLine(`[Local Dev] Found Bridge: ${bridgeUri.fsPath}`);
+                    return localBinaryUri;
                 } else {
-                    this.outputChannel.appendLine(`[Local Dev] Warning: Core found but Bridge missing at ${bridgePath}`);
+                    this.outputChannel.appendLine(`[Local Dev] Warning: Core found but Bridge missing at ${bridgeUri.fsPath}`);
                     this.outputChannel.appendLine(`[Local Dev] Run ./scripts/install-local.sh to install both binaries`);
                 }
             }
@@ -75,13 +82,14 @@ export class ServerManager {
 
     /**
      * Ensure server is installed, download if necessary
+     * @returns Uri to the server executable
      */
-    async ensureServerInstalled(): Promise<string> {
+    async ensureServerInstalled(): Promise<vscode.Uri> {
         // Check for local development binaries FIRST (F5 debugging)
-        const localBinary = this.checkLocalDevBinaries();
-        if (localBinary) {
+        const localBinaryUri = this.checkLocalDevBinaries();
+        if (localBinaryUri) {
             this.outputChannel.appendLine('[Local Dev Mode] Using local binaries from Extension/server/binaries/');
-            return localBinary;
+            return localBinaryUri;
         }
 
         // Production mode: download from NuGet
@@ -106,10 +114,11 @@ export class ServerManager {
         // Check if already installed
         const installedVersion = this.getInstalledVersion();
         if (installedVersion === requiredVersion) {
-            const serverPath = this.getServerExecutablePath(requiredVersion);
-            if (fs.existsSync(serverPath)) {
+            const serverUri = this.getServerExecutablePath(requiredVersion);
+            // BOUNDARY: Uri → fsPath for Node.js fs existence check
+            if (fs.existsSync(serverUri.fsPath)) {
                 this.outputChannel.appendLine(`Server v${installedVersion} already installed`);
-                return serverPath;
+                return serverUri;
             }
         }
 
@@ -183,8 +192,9 @@ export class ServerManager {
     /**
      * Upgrade server to latest version
      * Attempts graceful shutdown of running server if RPC client is available
+     * @returns Uri to the upgraded server executable
      */
-    async upgradeServer(): Promise<string> {
+    async upgradeServer(): Promise<vscode.Uri> {
         this.outputChannel.appendLine('Upgrading server...');
 
         // Attempt graceful shutdown of running server
@@ -228,13 +238,14 @@ export class ServerManager {
      * Get installed server version
      */
     private getInstalledVersion(): string | null {
-        const serverDir = path.join(this.context.globalStoragePath, 'server');
-        if (!fs.existsSync(serverDir)) {
+        const serverDirUri = vscode.Uri.joinPath(this.globalStorageUri, 'server');
+        // BOUNDARY: Uri → fsPath for Node.js fs directory operations
+        if (!fs.existsSync(serverDirUri.fsPath)) {
             return null;
         }
 
-        const versions = fs.readdirSync(serverDir).filter(name => {
-            const versionPath = path.join(serverDir, name);
+        const versions = fs.readdirSync(serverDirUri.fsPath).filter(name => {
+            const versionPath = path.join(serverDirUri.fsPath, name);
             return fs.statSync(versionPath).isDirectory();
         });
 
@@ -248,10 +259,11 @@ export class ServerManager {
     }
 
     /**
-     * Get path to server executable for installed version
-     * Returns the path to the Core Server executable
+     * Get Uri to server executable for installed version
+     * Returns the Uri to the Core Server executable
+     * @returns Uri to the server executable
      */
-    getServerExecutablePath(version?: string): string {
+    getServerExecutablePath(version?: string): vscode.Uri {
         const actualVersion = version || this.getInstalledVersion();
         if (!actualVersion) {
             throw new Error('No server version installed');
@@ -259,60 +271,71 @@ export class ServerManager {
         
         const platform = this.getPlatform();
         const executableName = platform.startsWith('win') ? 'DataverseMCPToolBox.exe' : 'DataverseMCPToolBox';
-        return path.join(this.context.globalStoragePath, 'server', actualVersion, platform, executableName);
+        return vscode.Uri.joinPath(this.globalStorageUri, 'server', actualVersion, platform, executableName);
     }
 
     /**
      * Download and install server from NuGet
+     * Uses hybrid filesystem strategy: workspace.fs for directory management, Node.js fs for unzipping and chmod
      */
     private async downloadAndInstallServer(version: string): Promise<void> {
         // Download .nupkg file
         const nupkgBuffer = await this.downloadNuGetPackage(version);
 
         // Extract to temp directory
-        const tempDir = path.join(this.context.globalStoragePath, 'temp', `server-${version}`);
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true });
+        const tempDirUri = vscode.Uri.joinPath(this.globalStorageUri, 'temp', `server-${version}`);
+        
+        // Surface operation: Check and delete if exists
+        try {
+            await vscode.workspace.fs.stat(tempDirUri);
+            await vscode.workspace.fs.delete(tempDirUri, { recursive: true, useTrash: false });
+        } catch {
+            // Directory doesn't exist, that's fine
         }
-        fs.mkdirSync(tempDir, { recursive: true });
+        
+        // Surface operation: Create directory
+        await vscode.workspace.fs.createDirectory(tempDirUri);
 
-        this.outputChannel.appendLine(`Extracting package to ${tempDir}...`);
+        this.outputChannel.appendLine(`Extracting package to ${tempDirUri.fsPath}...`);
 
+        // BOUNDARY: Deep operation - unzip requires Node.js fs and string path
         const zip = new AdmZip(nupkgBuffer);
-        zip.extractAllTo(tempDir, true);
+        zip.extractAllTo(tempDirUri.fsPath, true);
 
         // Copy ALL platform-specific binaries to final location (Core + Bridge)
         const platform = this.getPlatform();
-        const sourceDir = path.join(tempDir, 'runtimes', platform, 'native');
-        const targetDir = path.join(this.context.globalStoragePath, 'server', version, platform);
+        const sourceDirUri = vscode.Uri.joinPath(tempDirUri, 'runtimes', platform, 'native');
+        const targetDirUri = vscode.Uri.joinPath(this.globalStorageUri, 'server', version, platform);
 
-        if (!fs.existsSync(sourceDir)) {
-            throw new Error(`Platform binaries not found in package: ${sourceDir}`);
+        // BOUNDARY: Deep operation - directory scan requires Node.js fs
+        if (!fs.existsSync(sourceDirUri.fsPath)) {
+            throw new Error(`Platform binaries not found in package: ${sourceDirUri.fsPath}`);
         }
 
-        fs.mkdirSync(targetDir, { recursive: true });
+        // Surface operation: Create target directory
+        await vscode.workspace.fs.createDirectory(targetDirUri);
 
-        // Copy ALL files from native directory (Core Server + Bridge)
-        const files = fs.readdirSync(sourceDir);
+        // BOUNDARY: Deep operation - copy files and set permissions requires Node.js fs
+        const files = fs.readdirSync(sourceDirUri.fsPath);
         for (const file of files) {
-            const sourcePath = path.join(sourceDir, file);
-            const targetPath = path.join(targetDir, file);
+            const sourcePath = path.join(sourceDirUri.fsPath, file);
+            const targetPath = path.join(targetDirUri.fsPath, file);
             fs.copyFileSync(sourcePath, targetPath);
             this.outputChannel.appendLine(`  Copied: ${file}`);
         }
 
-        // Set executable permissions on Unix for ALL binaries
+        // BOUNDARY: Deep operation - chmod requires Node.js fs
         if (!platform.startsWith('win')) {
             for (const file of files) {
-                const targetPath = path.join(targetDir, file);
+                const targetPath = path.join(targetDirUri.fsPath, file);
                 if (fs.statSync(targetPath).isFile()) {
                     fs.chmodSync(targetPath, 0o755);
                 }
             }
         }
 
-        // Clean up temp directory
-        fs.rmSync(tempDir, { recursive: true });
+        // Surface operation: Clean up temp directory
+        await vscode.workspace.fs.delete(tempDirUri, { recursive: true, useTrash: false });
 
         // Clean up old versions
         await this.cleanupOldVersions(version);
@@ -458,19 +481,26 @@ export class ServerManager {
 
     /**
      * Clean up old server versions, keeping only the current one
+     * Uses hybrid strategy: workspace.fs for deletion, Node.js fs for directory scan
      */
     private async cleanupOldVersions(currentVersion: string): Promise<void> {
-        const serverDir = path.join(this.context.globalStoragePath, 'server');
-        if (!fs.existsSync(serverDir)) {
-            return;
+        const serverDirUri = vscode.Uri.joinPath(this.globalStorageUri, 'server');
+        
+        // Surface operation: Check if directory exists
+        try {
+            await vscode.workspace.fs.stat(serverDirUri);
+        } catch {
+            return; // Directory doesn't exist
         }
 
-        const versions = fs.readdirSync(serverDir);
+        // BOUNDARY: Deep operation - scan directory using Node.js fs
+        const versions = fs.readdirSync(serverDirUri.fsPath);
         for (const version of versions) {
             if (version !== currentVersion) {
-                const versionPath = path.join(serverDir, version);
+                const versionUri = vscode.Uri.joinPath(serverDirUri, version);
                 this.outputChannel.appendLine(`Cleaning up old version: ${version}`);
-                fs.rmSync(versionPath, { recursive: true, force: true });
+                // Surface operation: Delete old version directory
+                await vscode.workspace.fs.delete(versionUri, { recursive: true, useTrash: false });
             }
         }
     }

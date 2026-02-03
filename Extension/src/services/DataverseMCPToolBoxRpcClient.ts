@@ -85,8 +85,11 @@ export class DataverseMCPToolBoxRpcClient {
     /**
      * Connecte au serveur .NET via Named Pipe
      * Si le serveur n'est pas démarré, le démarre automatiquement
+     * @param serverUri - Uri to the server executable
+     * @param pluginDirectoryUri - Optional Uri to the plugin directory
+     * @param socketDir - Socket directory path (NOT a Uri - Unix domain socket path)
      */
-    async connect(serverPath: string, pluginDirectory?: string, socketDir?: string): Promise<void> {
+    async connect(serverUri: vscode.Uri, pluginDirectoryUri?: vscode.Uri, socketDir?: string): Promise<void> {
         if (this.isConnected) {
             return;
         }
@@ -131,7 +134,7 @@ export class DataverseMCPToolBoxRpcClient {
                 // If first attempt failed, try to start the server
                 if (i === 0) {
                     this.log('[RPC Client] Server not found, starting main server...');
-                    await this.startServer(serverPath, pluginDirectory, this._socketDir);
+                    await this.startServer(serverUri, pluginDirectoryUri, this._socketDir);
                 }
                 
                 this.log(`[RPC Client] Connection attempt ${i + 1}/${MAX_CONNECTION_RETRIES}...`);
@@ -170,14 +173,17 @@ export class DataverseMCPToolBoxRpcClient {
 
     /**
      * Start the main server process
+     * @param serverUri - Uri to the server executable
+     * @param pluginDirectoryUri - Optional Uri to the plugin directory
+     * @param socketDir - Socket directory path (NOT a Uri - Unix domain socket path)
      */
-    private async startServer(serverPath: string, pluginDirectory?: string, socketDir?: string): Promise<void> {
+    private async startServer(serverUri: vscode.Uri, pluginDirectoryUri?: vscode.Uri, socketDir?: string): Promise<void> {
         this.log('[RPC Client] Starting main server process...');
-        this.log(`[RPC Client] Binary path: ${serverPath}`);
+        this.log(`[RPC Client] Binary path: ${serverUri.fsPath}`);
 
-        // Verify binary exists
-        if (!fs.existsSync(serverPath)) {
-            const errorMsg = `Server binary not found at: ${serverPath}`;
+        // BOUNDARY: Uri → fsPath for Node.js fs existence check
+        if (!fs.existsSync(serverUri.fsPath)) {
+            const errorMsg = `Server binary not found at: ${serverUri.fsPath}`;
             this.log(`[RPC Client] ERROR: ${errorMsg}`);
             vscode.window.showErrorMessage(
                 `Dataverse MCP Server binary not found. Please reinstall the extension or check the installation.`,
@@ -190,10 +196,10 @@ export class DataverseMCPToolBoxRpcClient {
             throw new Error(errorMsg);
         }
 
-        // Set executable permissions on Unix platforms (critical for macOS/Linux)
+        // BOUNDARY: Uri → fsPath for chmod (Unix only)
         if (process.platform !== 'win32') {
             try {
-                fs.chmodSync(serverPath, 0o755);
+                fs.chmodSync(serverUri.fsPath, 0o755);
                 this.log('[RPC Client] Set executable permissions on server binary');
             } catch (error) {
                 const errorMsg = `Failed to set executable permissions on server binary: ${error}`;
@@ -223,9 +229,10 @@ export class DataverseMCPToolBoxRpcClient {
         }
 
         const env: NodeJS.ProcessEnv = { ...process.env };
-        if (pluginDirectory) {
-            env['DATAVERSE_MCP_PLUGIN_DIR'] = pluginDirectory;
-            this.log(`[RPC Client] Plugin directory: ${pluginDirectory}`);
+        // BOUNDARY: Uri → fsPath for environment variable
+        if (pluginDirectoryUri) {
+            env['DATAVERSE_MCP_PLUGIN_DIR'] = pluginDirectoryUri.fsPath;
+            this.log(`[RPC Client] Plugin directory: ${pluginDirectoryUri.fsPath}`);
         }
         // Ensure pipe name is passed to server
         env['DATAVERSE_MCP_PIPE_NAME'] = pipeName;
@@ -234,7 +241,7 @@ export class DataverseMCPToolBoxRpcClient {
         // .NET's Path.GetTempPath() reads TMPDIR at runtime startup
         // NamedPipeServerStream uses Path.GetTempPath() to create Unix socket files
         if (socketDir) {
-            env['TMPDIR'] = socketDir;
+            env['TMPDIR'] = socketDir; // socketDir is already a string (Unix socket path)
             this.log(`[RPC Client] Set TMPDIR for server process: ${socketDir}`);
             
             // Log expected socket path with length for debugging
@@ -243,7 +250,8 @@ export class DataverseMCPToolBoxRpcClient {
         }
 
         this.log('[RPC Client] Spawning server process...');
-        this.serverProcess = cp.spawn(serverPath, [], {
+        // BOUNDARY: Uri → fsPath for child process spawn
+        this.serverProcess = cp.spawn(serverUri.fsPath, [], {
             stdio: ['ignore', 'ignore', 'pipe'], // stderr only for logs
             env,
             detached: false
@@ -532,10 +540,12 @@ export class DataverseMCPToolBoxRpcClient {
 
     /**
      * Set the plugin directory path (must be called before plugin operations)
+     * @param directoryUri - Uri to the plugin directory
      */
-    async setPluginDirectory(directoryPath: string): Promise<void> {
+    async setPluginDirectory(directoryUri: vscode.Uri): Promise<void> {
         this.ensureConnected();
-        await this.connection!.sendRequest('SetPluginDirectory', { directoryPath });
+        // BOUNDARY: Uri → fsPath for RPC call (server expects string path)
+        await this.connection!.sendRequest('SetPluginDirectory', { directoryPath: directoryUri.fsPath });
     }
 
     /**

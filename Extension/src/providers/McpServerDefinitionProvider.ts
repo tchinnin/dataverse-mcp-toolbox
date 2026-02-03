@@ -13,20 +13,25 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
     private readonly _onDidChangeMcpServerDefinitions = new vscode.EventEmitter<void>();
     readonly onDidChangeMcpServerDefinitions = this._onDidChangeMcpServerDefinitions.event;
 
-    private bridgeExecutablePath: string | undefined;
-    private pluginDirectory: string | undefined;
+    // Internal storage uses Uri
+    private bridgeExecutableUri: vscode.Uri | undefined;
+    private pluginDirectoryUri: vscode.Uri | undefined;
     private pipeName: string | undefined;
-    private socketDir: string | undefined;
+    private socketDir: string | undefined; // Socket path, NOT a filesystem Uri
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
     /**
      * Update the server configuration
      * Triggers onDidChangeMcpServerDefinitions to notify VS Code
+     * @param bridgeUri - Uri to the Bridge executable
+     * @param pluginDirUri - Uri to the plugin directory
+     * @param pipe - Named pipe identifier
+     * @param socketDirectory - Socket directory path (NOT a Uri - Unix domain socket path)
      */
-    updateConfiguration(bridgePath: string, pluginDir: string, pipe: string, socketDirectory: string): void {
-        this.bridgeExecutablePath = bridgePath;
-        this.pluginDirectory = pluginDir;
+    updateConfiguration(bridgeUri: vscode.Uri, pluginDirUri: vscode.Uri, pipe: string, socketDirectory: string): void {
+        this.bridgeExecutableUri = bridgeUri;
+        this.pluginDirectoryUri = pluginDirUri;
         this.pipeName = pipe;
         this.socketDir = socketDirectory;
         
@@ -40,32 +45,33 @@ export class McpServerDefinitionProvider implements vscode.McpServerDefinitionPr
      */
     provideMcpServerDefinitions(): vscode.ProviderResult<vscode.McpServerDefinition[]> {
         // If configuration not set yet, return empty array
-        if (!this.bridgeExecutablePath || !this.pluginDirectory || !this.pipeName || !this.socketDir) {
+        if (!this.bridgeExecutableUri || !this.pluginDirectoryUri || !this.pipeName || !this.socketDir) {
             console.error('[MCP Provider] Configuration not ready yet');
             return [];
         }
 
-        // Verify bridge executable exists
-        if (!fs.existsSync(this.bridgeExecutablePath)) {
-            console.error(`[MCP Provider] Bridge executable not found: ${this.bridgeExecutablePath}`);
+        // BOUNDARY: Uri → fsPath for Node.js fs existence check
+        const bridgePathString = this.bridgeExecutableUri.fsPath;
+        if (!fs.existsSync(bridgePathString)) {
+            console.error(`[MCP Provider] Bridge executable not found: ${bridgePathString}`);
             return [];
         }
 
         console.error(`[MCP Provider] Providing server definition:`);
-        console.error(`  - Bridge: ${this.bridgeExecutablePath}`);
-        console.error(`  - Plugin Dir: ${this.pluginDirectory}`);
+        console.error(`  - Bridge: ${bridgePathString}`);
+        console.error(`  - Plugin Dir: ${this.pluginDirectoryUri.fsPath}`);
         console.error(`  - Pipe Name: ${this.pipeName}`);
         console.error(`  - Socket Dir: ${this.socketDir}`);
 
-        // Create stdio MCP server definition using constructor
+        // BOUNDARY: Uri → fsPath for MCP API (VS Code MCP expects string paths)
         const serverDefinition = new vscode.McpStdioServerDefinition(
             'Dataverse MCP Toolbox',  // label
-            this.bridgeExecutablePath, // command
+            bridgePathString,          // command (requires string path)
             [],                        // args
             {                          // env
-                DATAVERSE_MCP_PLUGIN_DIR: this.pluginDirectory,
+                DATAVERSE_MCP_PLUGIN_DIR: this.pluginDirectoryUri.fsPath, // BOUNDARY: Uri → fsPath for env var
                 DATAVERSE_MCP_PIPE_NAME: this.pipeName,
-                TMPDIR: this.socketDir  // CRITICAL: Bridge must use same socket directory as Core Server
+                TMPDIR: this.socketDir  // Socket path stays as string
             }
         );
 
