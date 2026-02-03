@@ -52,14 +52,14 @@ export function registerServerCommands(
 
                     // Upgrade server (includes graceful shutdown)
                     progress.report({ message: 'Downloading new version...' });
-                    const newServerPath = await serverManager.upgradeServer();
+                    const newServerUri = await serverManager.upgradeServer();
 
                     // Notify MCP provider of configuration change
                     progress.report({ message: 'Updating MCP configuration...' });
-                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+                    const pluginDirectoryUri = vscode.Uri.joinPath(context.globalStorageUri, 'plugins');
                     const pipeName = rpcClient.getPipeName();
-                    const bridgePath = getBridgePath(newServerPath);
-                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, socketDir);
+                    const bridgeUri = getBridgePath(newServerUri);
+                    mcpProvider.updateConfiguration(bridgeUri, pluginDirectoryUri, pipeName, socketDir);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();
@@ -386,10 +386,10 @@ export function registerServerCommands(
 }
 
 /**
- * Get the Bridge executable path from the server path
+ * Get the Bridge executable Uri from the server Uri
  */
-function getBridgePath(serverPath: string): string {
-    const serverDir = path.dirname(serverPath);
+function getBridgePath(serverUri: vscode.Uri): vscode.Uri {
+    const serverDir = vscode.Uri.joinPath(serverUri, '..');
     const platform = process.platform;
     
     let bridgeName: string;
@@ -399,5 +399,5 @@ function getBridgePath(serverPath: string): string {
         bridgeName = 'DataverseMCPToolBox.Bridge';
     }
     
-    return path.join(serverDir, bridgeName);
+    return vscode.Uri.joinPath(serverDir, bridgeName);
 }

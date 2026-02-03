@@ -271,11 +271,11 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Get the Bridge executable path from the server path
+ * Get the Bridge executable Uri from the server Uri
  * The Bridge executable is in the same directory as the Core server
  */
-function getBridgePath(serverPath: string): string {
-    const serverDir = path.dirname(serverPath);
+function getBridgePath(serverUri: vscode.Uri): vscode.Uri {
+    const serverDir = vscode.Uri.joinPath(serverUri, '..');
     const platform = process.platform;
     
     let bridgeName: string;
@@ -285,7 +285,7 @@ function getBridgePath(serverPath: string): string {
         bridgeName = 'DataverseMCPToolBox.Bridge';
     }
     
-    return path.join(serverDir, bridgeName);
+    return vscode.Uri.joinPath(serverDir, bridgeName);
 }
 
 /**
@@ -298,7 +298,7 @@ async function ensureServerAndConnect(
     serverInfoProvider: ServerInfoTreeProvider
 ): Promise<void> {
     // Check if server binary exists
-    const serverPath = await vscode.window.withProgress({
+    const serverUri = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: 'Setting up Dataverse MCP Server...',
         cancellable: false
@@ -313,29 +313,31 @@ async function ensureServerAndConnect(
         }
     });
 
-    console.error(`[Extension] Server binary ready at: ${serverPath}`);
+    console.error(`[Extension] Server binary ready at: ${serverUri.fsPath}`);
 
-    // Set up plugin directory in globalStoragePath (survives extension updates)
-    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-    console.error(`[Extension] Plugin directory: ${pluginDirectory}`);
+    // Set up plugin directory in globalStorageUri (survives extension updates)
+    const pluginDirectoryUri = vscode.Uri.joinPath(context.globalStorageUri, 'plugins');
+    console.error(`[Extension] Plugin directory: ${pluginDirectoryUri.fsPath}`);
 
     // Ensure the plugins directory exists
-    if (!fs.existsSync(pluginDirectory)) {
-        fs.mkdirSync(pluginDirectory, { recursive: true });
+    // BOUNDARY: Use workspace.fs for directory operations
+    try {
+        await vscode.workspace.fs.createDirectory(pluginDirectoryUri);
+    } catch (error) {
+        // Directory might already exist, ignore error
     }
 
     // Update MCP provider configuration
     // The provider handles registration with VS Code's MCP infrastructure
     const pipeName = rpcClient.getPipeName();
-    const bridgePath = getBridgePath(serverPath);
-    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, SOCKET_DIR);
+    const bridgeUri = getBridgePath(serverUri);
+    mcpProvider.updateConfiguration(bridgeUri, pluginDirectoryUri, pipeName, SOCKET_DIR);
     console.error('[Extension] MCP provider configuration updated');
 
     // Connect to RPC server (should be started by Copilot via MCP provider)
     try {
-        const serverPath = await serverManager.ensureServerInstalled();
-        const pluginDirectory = path.join(context.globalStorageUri.fsPath, 'plugins');
-        await rpcClient.connect(serverPath, pluginDirectory, SOCKET_DIR);
+        // serverUri and pluginDirectoryUri already obtained above
+        await rpcClient.connect(serverUri, pluginDirectoryUri, SOCKET_DIR);
         console.error('[Extension] Connected to Dataverse RPC server');
         updateServerStatusBar(true);
         updateConnectionContext(true);
@@ -434,13 +436,13 @@ async function checkAndNotifyServerUpdate(context: vscode.ExtensionContext, serv
 
                     // Upgrade server (includes graceful shutdown)
                     progress.report({ message: 'Downloading new version...' });
-                    const newServerPath = await serverManager.upgradeServer();
+                    const newServerUri = await serverManager.upgradeServer();
 
                     // Update MCP provider configuration with new path
-                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+                    const pluginDirectoryUri = vscode.Uri.joinPath(context.globalStorageUri, 'plugins');
                     const pipeName = rpcClient.getPipeName();
-                    const bridgePath = getBridgePath(newServerPath);
-                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, SOCKET_DIR);
+                    const bridgeUri = getBridgePath(newServerUri);
+                    mcpProvider.updateConfiguration(bridgeUri, pluginDirectoryUri, pipeName, SOCKET_DIR);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();

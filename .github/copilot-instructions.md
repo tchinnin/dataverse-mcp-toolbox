@@ -449,12 +449,85 @@ if (process.platform === 'win32') {
 ```
 
 #### Chemins de fichiers
+
+##### Extension TypeScript - Utiliser vscode.Uri (recommandé)
+```typescript
+// ✅ MODERNE - Utiliser vscode.Uri au lieu de string paths
+import * as vscode from 'vscode';
+
+// Obtenir le storage Uri
+const storageUri = context.globalStorageUri; // NOT context.globalStoragePath (deprecated)
+
+// Construire des chemins avec joinPath
+const pluginDirUri = vscode.Uri.joinPath(storageUri, 'plugins');
+const configUri = vscode.Uri.joinPath(storageUri, 'config.json');
+
+// ❌ ANCIEN - Éviter string paths avec path.join()
+const pluginDir = path.join(context.globalStoragePath, 'plugins'); // Deprecated
+```
+
+##### Stratégie Filesystem Hybride (Extension)
+```typescript
+// ✅ Surface operations - Utiliser vscode.workspace.fs
+await vscode.workspace.fs.createDirectory(pluginDirUri);
+await vscode.workspace.fs.stat(fileUri);
+await vscode.workspace.fs.delete(fileUri, { recursive: true });
+await vscode.workspace.fs.readFile(fileUri); // Returns Uint8Array
+
+// ✅ Deep operations - Utiliser Node.js fs avec .fsPath
+import * as fs from 'fs';
+
+// BOUNDARY: Uri → fsPath pour operations complexes
+fs.chmodSync(binaryUri.fsPath, 0o755);            // chmod not in workspace.fs
+new AdmZip(zipUri.fsPath);                        // AdmZip needs string path
+cp.spawn(execUri.fsPath, []);                     // spawn needs string path
+env['VAR'] = dirUri.fsPath;                       // env vars need string path
+
+// Toujours marquer les conversions .fsPath
+// BOUNDARY: Uri → fsPath for [reason]
+const execPath = serverUri.fsPath; // BOUNDARY: Uri → fsPath for spawn
+```
+
+##### Pattern BOUNDARY
+```typescript
+// ✅ Toujours documenter pourquoi .fsPath est nécessaire
+class ServerManager {
+    private globalStorageUri: vscode.Uri; // Store Uri internally
+    
+    async downloadServer(): Promise<vscode.Uri> {
+        const zipUri = vscode.Uri.joinPath(this.globalStorageUri, 'server.zip');
+        
+        // BOUNDARY: Uri → fsPath for AdmZip (library requires string path)
+        const zip = new AdmZip(zipUri.fsPath);
+        
+        // BOUNDARY: Uri → fsPath for Node.js fs operations
+        zip.extractAllTo(this.globalStorageUri.fsPath, true);
+        
+        return serverUri; // Return Uri, not string
+    }
+}
+```
+
+##### C# - Chemins multi-plateforme
 ```csharp
 // ✅ BON - Utiliser Path.Combine
 var path = Path.Combine(baseDir, "subfolder", "file.txt");
 
 // ❌ MAUVAIS - Hardcoded separators
 var path = baseDir + "\\subfolder\\file.txt"; // Échoue sur Unix
+```
+
+##### Cas spéciaux - Sockets ne sont PAS des Uris
+```typescript
+// ❌ ERREUR - Les socket paths ne sont PAS des filesystem paths
+const socketDir: vscode.Uri = vscode.Uri.file('/tmp/sockets'); // NON!
+
+// ✅ CORRECT - Socket paths restent des strings
+const socketDir: string = '/tmp/dvmcptb-sockets'; // Unix domain socket path
+const pipeName: string = 'DataverseMCP-12345';     // Named pipe identifier
+
+// Raison : Les Unix domain sockets ont des limitations de longueur (104 chars)
+// et ne sont pas de vrais fichiers filesystem
 ```
 
 #### Permissions d'exécution (Unix)

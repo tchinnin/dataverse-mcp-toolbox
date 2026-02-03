@@ -5,16 +5,16 @@ import { DataverseConnection } from '../models/DataverseConnection';
 
 /**
  * Service for managing Dataverse connection storage using file-based persistence
- * Connections are stored in globalStoragePath to survive extension updates
+ * Connections are stored in globalStorageUri to survive extension updates
  */
 export class ConnectionStorageService {
     private static readonly CONNECTIONS_FILE = 'connections.json';
     private static readonly LEGACY_STORAGE_KEY = 'dataverse.connections';
-    private readonly connectionsFilePath: string;
+    private readonly connectionsFileUri: vscode.Uri;
     
     constructor(private context: vscode.ExtensionContext) {
-        // Use globalStoragePath for persistent storage across extension updates
-        this.connectionsFilePath = path.join(context.globalStoragePath, ConnectionStorageService.CONNECTIONS_FILE);
+        // Use globalStorageUri for persistent storage across extension updates
+        this.connectionsFileUri = vscode.Uri.joinPath(context.globalStorageUri, ConnectionStorageService.CONNECTIONS_FILE);
         
         // Ensure directory exists
         this.ensureStorageDirectory();
@@ -25,38 +25,44 @@ export class ConnectionStorageService {
 
     /**
      * Ensure storage directory exists
+     * Surface operation: Uses workspace.fs for directory creation
      */
     private ensureStorageDirectory(): void {
-        const dir = path.dirname(this.connectionsFilePath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
+        const dirUri = vscode.Uri.joinPath(this.connectionsFileUri, '..');
+        // Create directory asynchronously (fire and forget - will be available when needed)
+        vscode.workspace.fs.createDirectory(dirUri).then(
+            () => {},
+            (error) => console.error('[ConnectionStorage] Failed to create directory:', error)
+        );
     }
 
     /**
      * Migrate connections from old globalState storage to file-based storage
+     * Surface operation: Uses workspace.fs for file existence check
      */
     private migrateFromGlobalState(): void {
-        // Check if file already exists
-        if (fs.existsSync(this.connectionsFilePath)) {
-            // File exists, but check if it contains old-style IDs that need migration
-            this.migrateLegacyConnectionIds();
-            return; // Already migrated from globalState
-        }
+        // Check if file already exists using workspace.fs
+        vscode.workspace.fs.stat(this.connectionsFileUri).then(
+            () => {
+                // File exists, check if it contains old-style IDs that need migration
+                this.migrateLegacyConnectionIds();
+            },
+            () => {
+                // File doesn't exist, try to migrate from globalState
+                const legacyConnections = this.context.globalState.get<DataverseConnection[]>(
+                    ConnectionStorageService.LEGACY_STORAGE_KEY,
+                    []
+                );
 
-        // Try to get connections from old storage
-        const legacyConnections = this.context.globalState.get<DataverseConnection[]>(
-            ConnectionStorageService.LEGACY_STORAGE_KEY,
-            []
+                if (legacyConnections.length > 0) {
+                    console.log(`[ConnectionStorage] Migrating ${legacyConnections.length} connections from globalState to file storage`);
+                    this.saveConnections(legacyConnections);
+                    
+                    // Clear old storage after successful migration
+                    this.context.globalState.update(ConnectionStorageService.LEGACY_STORAGE_KEY, undefined);
+                }
+            }
         );
-
-        if (legacyConnections.length > 0) {
-            console.log(`[ConnectionStorage] Migrating ${legacyConnections.length} connections from globalState to file storage`);
-            this.saveConnections(legacyConnections);
-            
-            // Clear old storage after successful migration
-            this.context.globalState.update(ConnectionStorageService.LEGACY_STORAGE_KEY, undefined);
-        }
     }
 
     /**
@@ -97,14 +103,18 @@ export class ConnectionStorageService {
 
     /**
      * Load connections from file
+     * Surface operation: Uses workspace.fs for reading small JSON file
      */
     private loadConnections(): DataverseConnection[] {
-        if (!fs.existsSync(this.connectionsFilePath)) {
-            return [];
-        }
-
         try {
-            const data = fs.readFileSync(this.connectionsFilePath, 'utf-8');
+            // Synchronous read using Node.js fs (workspace.fs is async)
+            // For migration simplicity, keeping sync operations for now
+            // TODO: Consider async refactoring in future
+            if (!fs.existsSync(this.connectionsFileUri.fsPath)) {
+                return [];
+            }
+            
+            const data = fs.readFileSync(this.connectionsFileUri.fsPath, 'utf-8');
             return JSON.parse(data) as DataverseConnection[];
         } catch (error) {
             console.error('[ConnectionStorage] Failed to load connections:', error);
@@ -114,17 +124,18 @@ export class ConnectionStorageService {
 
     /**
      * Save connections to file (atomic write with temp file)
+     * Surface operation: Uses Node.js fs for atomic writes (workspace.fs doesn't support atomic operations)
      */
     private saveConnections(connections: DataverseConnection[]): void {
         try {
-            const tempPath = `${this.connectionsFilePath}.tmp`;
+            const tempPath = `${this.connectionsFileUri.fsPath}.tmp`;
             const data = JSON.stringify(connections, null, 2);
             
             // Write to temp file first
             fs.writeFileSync(tempPath, data, 'utf-8');
             
             // Atomic rename
-            fs.renameSync(tempPath, this.connectionsFilePath);
+            fs.renameSync(tempPath, this.connectionsFileUri.fsPath);
         } catch (error) {
             console.error('[ConnectionStorage] Failed to save connections:', error);
             throw error;
@@ -223,9 +234,17 @@ export class ConnectionStorageService {
     }
 
     /**
+     * Get the Uri to the connections file
+     */
+    public getStorageUri(): vscode.Uri {
+        return this.connectionsFileUri;
+    }
+
+    /**
      * Get the path to the connections file (for debugging)
+     * @deprecated Use getStorageUri() instead
      */
     public getStoragePath(): string {
-        return this.connectionsFilePath;
+        return this.connectionsFileUri.fsPath;
     }
 }
