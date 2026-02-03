@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as net from 'net';
 import { MessageConnection, createMessageConnection } from 'vscode-jsonrpc/node';
 import { NewlineDelimitedMessageReader } from '../utils/NewlineDelimitedMessageReader';
@@ -17,16 +18,20 @@ import { ServerVersionInfo } from '../models/ServerVersionInfo';
 const CONNECTION_RETRY_DELAY = 500;
 const MAX_CONNECTION_RETRIES = 15;
 
-// Helper to get platform-specific pipe path using environment variable
-function getPipePath(): string {
+// Helper to get platform-specific pipe path
+// socketDir is used on Unix platforms, ignored on Windows (uses \\.\pipe\ namespace)
+function getPipePath(socketDir: string): string {
     // Read pipe name from environment variable (set during server startup)
     const pipeName = process.env.DATAVERSE_MCP_PIPE_NAME || 'DataverseMCPToolBox';
     
     if (process.platform === 'win32') {
+        // Windows uses named pipe namespace (no file system)
         return `\\\\.\\pipe\\${pipeName}`;
     } else {
-        // Unix-like systems use domain sockets for named pipes
-        return path.join('/tmp', `CoreFxPipe_${pipeName}`);
+        // Unix-like systems use domain socket files
+        // CRITICAL: NamedPipeServerStream automatically adds "CoreFxPipe_" prefix on Unix
+        // We must match this exact naming convention
+        return path.join(socketDir, `CoreFxPipe_${pipeName}`);
     }
 }
 
@@ -43,15 +48,31 @@ export class DataverseMCPToolBoxRpcClient {
     private pipeStream: net.Socket | null = null;
     private isConnected: boolean = false;
     private _pipeName: string = '';
+    private _socketDir: string = '';
     private readonly _onConnectionStatusChanged = new vscode.EventEmitter<boolean>();
     public readonly onConnectionStatusChanged = this._onConnectionStatusChanged.event;
+    private outputChannel?: vscode.OutputChannel;
+
+    constructor(outputChannel?: vscode.OutputChannel) {
+        this.outputChannel = outputChannel;
+    }
+
+    /**
+     * Log message to both console and output channel
+     */
+    private log(message: string): void {
+        console.error(message);
+        if (this.outputChannel) {
+            this.outputChannel.appendLine(message);
+        }
+    }
 
     /**
      * Get the current Named Pipe name
      * This is used by the MCP Bridge to connect to the same Core Server
      */
     public getPipeName(): string {
-        return this._pipeName || process.env.DATAVERSE_MCP_PIPE_NAME || `DataverseMCPToolBox-${process.pid}`;
+        return this._pipeName || process.env.DATAVERSE_MCP_PIPE_NAME || `${process.pid}`;
     }
 
     /**
@@ -65,13 +86,38 @@ export class DataverseMCPToolBoxRpcClient {
      * Connecte au serveur .NET via Named Pipe
      * Si le serveur n'est pas démarré, le démarre automatiquement
      */
-    async connect(serverPath: string, pluginDirectory?: string): Promise<void> {
+    async connect(serverPath: string, pluginDirectory?: string, socketDir?: string): Promise<void> {
         if (this.isConnected) {
             return;
         }
 
         try {
-            console.error('[RPC Client] Attempting Named Pipe connection to server...');
+            this.log('[RPC Client] Attempting Named Pipe connection to server...');
+
+            // Initialize socket directory from parameter (os.tmpdir())
+            // TMPDIR will be set before server spawn to control Path.GetTempPath()
+            if (socketDir) {
+                this._socketDir = socketDir;
+                // Create socket directory if it doesn't exist
+                if (!fs.existsSync(this._socketDir)) {
+                    fs.mkdirSync(this._socketDir, { recursive: true });
+                    this.log(`[RPC Client] Created socket directory: ${this._socketDir}`);
+                } else {
+                    this.log(`[RPC Client] Using existing socket directory: ${this._socketDir}`);
+                }
+            } else {
+                this.log('[RPC Client] WARNING: No socket directory provided');
+            }
+
+            // CRITICAL: Initialize pipe name BEFORE first connection attempt
+            // This ensures getPipePath() returns the correct path from the start
+            // Use short name to respect Unix socket 104-char path limit
+            if (!this._pipeName) {
+                const pipeName = `${process.pid}`; // Just the PID for uniqueness
+                this._pipeName = pipeName;
+                process.env.DATAVERSE_MCP_PIPE_NAME = pipeName;
+                this.log(`[RPC Client] Initialized pipe name: ${pipeName}`);
+            }
 
             // Try to connect to existing server
             let connected = false;
@@ -84,26 +130,38 @@ export class DataverseMCPToolBoxRpcClient {
                 
                 // If first attempt failed, try to start the server
                 if (i === 0) {
-                    console.error('[RPC Client] Server not found, starting main server...');
-                    await this.startServer(serverPath, pluginDirectory);
+                    this.log('[RPC Client] Server not found, starting main server...');
+                    await this.startServer(serverPath, pluginDirectory, this._socketDir);
                 }
                 
-                console.error(`[RPC Client] Connection attempt ${i + 1}/${MAX_CONNECTION_RETRIES}...`);
+                this.log(`[RPC Client] Connection attempt ${i + 1}/${MAX_CONNECTION_RETRIES}...`);
                 await new Promise(resolve => setTimeout(resolve, CONNECTION_RETRY_DELAY));
             }
 
             if (!connected) {
-                throw new Error(
-                    'Could not connect to Dataverse MCP server via Named Pipe. ' +
-                    'Please check the server logs in VS Code Output panel.'
-                );
+                const errorMsg = 'Could not connect to Dataverse MCP server via Named Pipe after 15 attempts.';
+                this.log(`[RPC Client] ${errorMsg}`);
+                vscode.window.showErrorMessage(
+                    `${errorMsg} Please check the server logs for details.`,
+                    'Show Output',
+                    'Retry'
+                ).then(selection => {
+                    if (selection === 'Show Output') {
+                        if (this.outputChannel) {
+                            this.outputChannel.show();
+                        }
+                    } else if (selection === 'Retry') {
+                        vscode.commands.executeCommand('dataversemcptoolbox.startServerManually');
+                    }
+                });
+                throw new Error(errorMsg);
             }
 
-            console.error('[RPC Client] Connected to Named Pipe server successfully');
+            this.log('[RPC Client] Connected to Named Pipe server successfully');
             this.isConnected = true;
             this._onConnectionStatusChanged.fire(true);
         } catch (error) {
-            console.error('Error connecting to .NET server:', error);
+            this.log(`Error connecting to .NET server: ${error}`);
             this.isConnected = false;
             this._onConnectionStatusChanged.fire(false);
             throw error;
@@ -113,48 +171,174 @@ export class DataverseMCPToolBoxRpcClient {
     /**
      * Start the main server process
      */
-    private async startServer(serverPath: string, pluginDirectory?: string): Promise<void> {
-        console.error('[RPC Client] Starting main server process...');
+    private async startServer(serverPath: string, pluginDirectory?: string, socketDir?: string): Promise<void> {
+        this.log('[RPC Client] Starting main server process...');
+        this.log(`[RPC Client] Binary path: ${serverPath}`);
+
+        // Verify binary exists
+        if (!fs.existsSync(serverPath)) {
+            const errorMsg = `Server binary not found at: ${serverPath}`;
+            this.log(`[RPC Client] ERROR: ${errorMsg}`);
+            vscode.window.showErrorMessage(
+                `Dataverse MCP Server binary not found. Please reinstall the extension or check the installation.`,
+                'Show Details'
+            ).then(selection => {
+                if (selection === 'Show Details') {
+                    vscode.window.showErrorMessage(errorMsg);
+                }
+            });
+            throw new Error(errorMsg);
+        }
+
+        // Set executable permissions on Unix platforms (critical for macOS/Linux)
+        if (process.platform !== 'win32') {
+            try {
+                fs.chmodSync(serverPath, 0o755);
+                this.log('[RPC Client] Set executable permissions on server binary');
+            } catch (error) {
+                const errorMsg = `Failed to set executable permissions on server binary: ${error}`;
+                this.log(`[RPC Client] ERROR: ${errorMsg}`);
+                vscode.window.showErrorMessage(
+                    `Cannot make Dataverse MCP Server executable. Please check file permissions.`,
+                    'Show Details'
+                ).then(selection => {
+                    if (selection === 'Show Details') {
+                        vscode.window.showErrorMessage(errorMsg);
+                    }
+                });
+                throw new Error(errorMsg);
+            }
+        }
 
         // Generate unique pipe name based on VS Code process PID for multi-instance isolation
-        const pipeName = `DataverseMCPToolBox-${process.pid}`;
-        this._pipeName = pipeName;
-        process.env.DATAVERSE_MCP_PIPE_NAME = pipeName;
-        console.error(`[RPC Client] Using Named Pipe: ${pipeName}`);
+        // Note: pipe name should already be initialized in connect(), but we verify it here
+        // Use short name to respect Unix socket 104-char path limit
+        const pipeName = this._pipeName || `${process.pid}`;
+        if (!this._pipeName) {
+            this._pipeName = pipeName;
+            process.env.DATAVERSE_MCP_PIPE_NAME = pipeName;
+            this.log(`[RPC Client] Pipe name initialized in startServer: ${pipeName}`);
+        } else {
+            this.log(`[RPC Client] Using existing pipe name: ${pipeName}`);
+        }
 
         const env: NodeJS.ProcessEnv = { ...process.env };
         if (pluginDirectory) {
             env['DATAVERSE_MCP_PLUGIN_DIR'] = pluginDirectory;
+            this.log(`[RPC Client] Plugin directory: ${pluginDirectory}`);
         }
         // Ensure pipe name is passed to server
         env['DATAVERSE_MCP_PIPE_NAME'] = pipeName;
+        
+        // CRITICAL: Set TMPDIR before spawning server process (all platforms)
+        // .NET's Path.GetTempPath() reads TMPDIR at runtime startup
+        // NamedPipeServerStream uses Path.GetTempPath() to create Unix socket files
+        if (socketDir) {
+            env['TMPDIR'] = socketDir;
+            this.log(`[RPC Client] Set TMPDIR for server process: ${socketDir}`);
+            
+            // Log expected socket path with length for debugging
+            const expectedPath = getPipePath(socketDir);
+            this.log(`[RPC Client] Expected socket path: ${expectedPath} (length: ${expectedPath.length} chars)`);
+        }
 
+        this.log('[RPC Client] Spawning server process...');
         this.serverProcess = cp.spawn(serverPath, [], {
             stdio: ['ignore', 'ignore', 'pipe'], // stderr only for logs
             env,
             detached: false
         });
 
-        // Capture server logs
+        // Capture server logs and redirect to output channel
         this.serverProcess.stderr?.on('data', (data: Buffer) => {
             const message = data.toString();
-            console.error(`[Server] ${message.trim()}`);
+            this.log(`[Server] ${message.trim()}`);
         });
 
         this.serverProcess.on('exit', (code, signal) => {
-            console.error(`[Server] Process exited with code ${code}, signal ${signal}`);
+            this.log(`[Server] Process exited with code ${code}, signal ${signal}`);
             this.isConnected = false;
             this._onConnectionStatusChanged.fire(false);
         });
 
         this.serverProcess.on('error', (error) => {
-            console.error('[Server] Process error:', error);
+            this.log(`[Server] Process error: ${error}`);
             this.isConnected = false;
             this._onConnectionStatusChanged.fire(false);
         });
 
-        // Wait a bit for server to start
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Wait for spawn event or error (instead of blind delay)
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                const errorMsg = 'Server process spawn timeout (2s)';
+                this.log(`[RPC Client] ERROR: ${errorMsg}`);
+                vscode.window.showErrorMessage(
+                    'Dataverse MCP Server failed to start within timeout. Please check the Output panel for details.',
+                    'Show Output'
+                ).then(selection => {
+                    if (selection === 'Show Output') {
+                        if (this.outputChannel) {
+                            this.outputChannel.show();
+                        }
+                    }
+                });
+                reject(new Error(errorMsg));
+            }, 2000);
+
+            this.serverProcess!.once('spawn', () => {
+                clearTimeout(timeout);
+                this.log(`[RPC Client] Server process spawned successfully (PID: ${this.serverProcess!.pid})`);
+                resolve();
+            });
+
+            this.serverProcess!.once('error', (error) => {
+                clearTimeout(timeout);
+                const errorMsg = `Failed to spawn server process: ${error.message}`;
+                this.log(`[RPC Client] ERROR: ${errorMsg}`);
+                vscode.window.showErrorMessage(
+                    `Dataverse MCP Server failed to start: ${error.message}`,
+                    'Show Output'
+                ).then(selection => {
+                    if (selection === 'Show Output') {
+                        if (this.outputChannel) {
+                            this.outputChannel.show();
+                        }
+                    }
+                });
+                reject(new Error(errorMsg));
+            });
+        });
+
+        // Give server a moment to create the Named Pipe
+        this.log('[RPC Client] Waiting for server to initialize Named Pipe...');
+        
+        // On Unix, verify pipe socket file was created (wait up to 3 seconds)
+        if (process.platform !== 'win32') {
+            const pipePath = getPipePath(this._socketDir);
+            let pipeExists = false;
+
+            this.log(`[RPC Client] Looking for pipe socket at: ${pipePath}`);
+
+            // Wait up to 3 seconds with 150ms intervals (20 attempts)
+            for (let i = 0; i < 20; i++) {
+                if (fs.existsSync(pipePath)) {
+                    pipeExists = true;
+                    this.log(`[RPC Client] ✓ Pipe socket found after ${(i + 1) * 150}ms`);
+                    break;
+                }
+                if (i % 5 === 0) {
+                    this.log(`[RPC Client] Still waiting for pipe socket... (${i + 1}/20)`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
+
+            if (!pipeExists) {
+                this.log(`[RPC Client] WARNING: Pipe socket not found at ${pipePath} after 3s. Will try to connect anyway...`);
+            }
+        } else {
+            // Windows: just wait a moment for server to initialize
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
 
     /**
@@ -162,9 +346,16 @@ export class DataverseMCPToolBoxRpcClient {
      */
     private async tryConnect(): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
-            const pipePath = getPipePath();
+            // Use socketDir (should always be set now)
+            const pipePath = getPipePath(this._socketDir);
             
-            console.error(`[RPC Client] Trying to connect to Named Pipe: ${pipePath}`);
+            // Check if socket file exists (Unix only)
+            if (process.platform !== 'win32') {
+                const socketExists = fs.existsSync(pipePath);
+                this.log(`[RPC Client] Socket exists before connect: ${socketExists} at ${pipePath}`);
+            }
+            
+            this.log(`[RPC Client] Trying to connect to Named Pipe: ${pipePath}`);
             
             const timeout = setTimeout(() => {
                 if (this.pipeStream) {
@@ -201,18 +392,18 @@ export class DataverseMCPToolBoxRpcClient {
             return;
         }
 
-        console.error('[RPC Client] Setting up JSON-RPC over Named Pipe');
+        this.log('[RPC Client] Setting up JSON-RPC over Named Pipe');
 
         // Handle pipe errors and closure
         this.pipeStream.on('error', (error) => {
-            console.error('[RPC Client] Named Pipe error:', error);
+            this.log(`[RPC Client] Named Pipe error: ${error}`);
             vscode.window.showErrorMessage(`Connection to Dataverse RPC server lost: ${error.message}`);
             this.isConnected = false;
             this._onConnectionStatusChanged.fire(false);
         });
 
         this.pipeStream.on('close', () => {
-            console.error('[RPC Client] Named Pipe closed');
+            this.log('[RPC Client] Named Pipe closed');
             this.isConnected = false;
             this._onConnectionStatusChanged.fire(false);
         });
@@ -224,16 +415,16 @@ export class DataverseMCPToolBoxRpcClient {
 
         // Enable trace for debugging
         this.connection.trace(2, {
-            log: (message: string) => console.log(`[JSON-RPC TRACE] ${message}`)
+            log: (message: string) => this.log(`[JSON-RPC TRACE] ${message}`)
         });
 
         // Handle connection errors
         this.connection.onError((error: any) => {
-            console.error('[RPC Client] JSON-RPC error:', error);
+            this.log(`[RPC Client] JSON-RPC error: ${error}`);
         });
 
         this.connection.onClose(() => {
-            console.error('[RPC Client] JSON-RPC connection closed');
+            this.log('[RPC Client] JSON-RPC connection closed');
             this.isConnected = false;
         });
 
@@ -245,7 +436,7 @@ export class DataverseMCPToolBoxRpcClient {
      * Ferme la connexion Named Pipe (peut tuer le serveur si nécessaire)
      */
     async disconnect(): Promise<void> {
-        console.error('[RPC Client] Disconnecting from Named Pipe server...');
+        this.log('[RPC Client] Disconnecting from Named Pipe server...');
 
         if (this.connection) {
             this.connection.dispose();
@@ -259,7 +450,7 @@ export class DataverseMCPToolBoxRpcClient {
 
         // Kill the server process if we started it
         if (this.serverProcess && !this.serverProcess.killed) {
-            console.error('[RPC Client] Terminating server process...');
+            this.log('[RPC Client] Terminating server process...');
             try {
                 // Try graceful shutdown first
                 this.serverProcess.kill('SIGTERM');
@@ -267,19 +458,19 @@ export class DataverseMCPToolBoxRpcClient {
                 // Force kill if still running after 2 seconds
                 setTimeout(() => {
                     if (this.serverProcess && !this.serverProcess.killed) {
-                        console.error('[RPC Client] Force killing server process...');
+                        this.log('[RPC Client] Force killing server process...');
                         this.serverProcess.kill('SIGKILL');
                     }
                 }, 2000);
             } catch (error) {
-                console.error('[RPC Client] Error killing server process:', error);
+                this.log(`[RPC Client] Error killing server process: ${error}`);
             }
             this.serverProcess = null;
         }
 
         this.isConnected = false;
         this._onConnectionStatusChanged.fire(false);
-        console.error('[RPC Client] Disconnected');
+        this.log('[RPC Client] Disconnected');
     }
 
     /**
@@ -335,7 +526,7 @@ export class DataverseMCPToolBoxRpcClient {
      */
     async setActiveConnection(connectionId: string): Promise<void> {
         this.ensureConnected();
-        console.error(`[RPC Client] Setting active connection for MCP: ${connectionId}`);
+        this.log(`[RPC Client] Setting active connection for MCP: ${connectionId}`);
         await this.connection!.sendRequest('SetActiveConnection', { connectionId });
     }
 

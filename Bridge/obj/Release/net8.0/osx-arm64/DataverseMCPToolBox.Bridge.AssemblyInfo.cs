@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyDescriptionAttribute(("MCP Bridge for Dataverse MCP ToolBox. Forwards STDIO to Named Pipes for GitHub Co" +
     "pilot integration."))]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha+7b48ab73009210e824ebce262465795a4bc83934")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha+e5a8dd34e08ec59d9b453bdc88f1b11428da6505")]
 [assembly: System.Reflection.AssemblyProductAttribute("DataverseMCPToolBox.Bridge")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DataverseMCPToolBox.Bridge")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]

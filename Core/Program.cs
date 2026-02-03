@@ -30,7 +30,14 @@ class Program
                 ?? "DataverseMCPToolBox"; // Fallback for local testing
 
             Console.Error.WriteLine($"[Startup] Using Named Pipe: {pipeName}");
-
+            
+            // Log TMPDIR to verify it was set correctly by Extension
+            string? tmpDir = Environment.GetEnvironmentVariable("TMPDIR");
+            Console.Error.WriteLine($"[Startup] TMPDIR environment variable: {tmpDir ?? "(not set)"}");
+            
+            // Log what Path.GetTempPath() returns (this is read at .NET runtime startup from TMPDIR)
+            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
+            Console.Error.WriteLine($"[Startup] Path.GetTempPath() returns: {tempPath}");
             // Initialize plugin directory from environment variable or default path
             string? pluginDirectory = Environment.GetEnvironmentVariable("DATAVERSE_MCP_PLUGIN_DIR");
             if (string.IsNullOrEmpty(pluginDirectory))
@@ -51,6 +58,7 @@ class Program
             Console.Error.WriteLine("✓ RPC service created (singleton for all clients)");
 
             // Create Named Pipe RPC server
+            // Socket location controlled by TMPDIR environment variable (set by Extension before spawn)
             var rpcServer = new NamedPipeRpcServer(pipeName);
 
             // Register services

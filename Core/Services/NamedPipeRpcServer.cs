@@ -80,6 +80,19 @@ public class NamedPipeRpcServer : IRpcServer
         Console.Error.WriteLine($"[NamedPipeRpcServer] Starting server on pipe: {_pipeName}");
         Console.Error.WriteLine($"[NamedPipeRpcServer] Platform: {GetPlatformName()}");
         Console.Error.WriteLine($"[NamedPipeRpcServer] Registered services: {_services.Count}");
+        
+        // Log temp directory and expected socket path for diagnostics
+        var tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
+        Console.Error.WriteLine($"[NamedPipeRpcServer] Path.GetTempPath() = {tempPath}");
+        
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // NamedPipeServerStream automatically adds "CoreFxPipe_" prefix on Unix
+            var expectedSocketPath = Path.Combine(tempPath, $"CoreFxPipe_{_pipeName}");
+            Console.Error.WriteLine($"[NamedPipeRpcServer] Expected Unix socket path: {expectedSocketPath}");
+            Console.Error.WriteLine($"[NamedPipeRpcServer] Socket path length: {expectedSocketPath.Length} chars (limit: 104)");
+        }
+        
         Console.Error.WriteLine("========================================");
         Console.Error.WriteLine("Server ready - waiting for Named Pipe connections...");
         Console.Error.WriteLine("========================================");
@@ -138,12 +151,23 @@ public class NamedPipeRpcServer : IRpcServer
             while (!cancellationToken.IsCancellationRequested)
             {
                 // Create a new Named Pipe server stream for each connection
+                // On Unix, this creates a socket file at Path.GetTempPath()/CoreFxPipe_{pipeName}
                 var pipeServer = new NamedPipeServerStream(
                     _pipeName,
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
+
+                // Verify socket file was created on Unix
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    var tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
+                    var socketPath = Path.Combine(tempPath, $"CoreFxPipe_{_pipeName}");
+                    var socketExists = File.Exists(socketPath);
+                    Console.Error.WriteLine($"[NamedPipeRpcServer] Socket file created: {socketPath}");
+                    Console.Error.WriteLine($"[NamedPipeRpcServer] Socket file exists: {socketExists}");
+                }
 
                 Console.Error.WriteLine("[NamedPipeRpcServer] Waiting for client connection...");
 

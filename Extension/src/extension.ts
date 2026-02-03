@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { ConnectionStorageService } from './services/ConnectionStorageService';
 import { ConnectionsTreeDataProvider } from './providers/ConnectionsTreeDataProvider';
 import { PluginsTreeProvider } from './providers/PluginsTreeProvider';
@@ -53,8 +54,26 @@ export async function activate(context: vscode.ExtensionContext) {
     serverManager = new ServerManager(context);
     context.subscriptions.push(serverManager);
 
-    // Initialize RPC client
-    rpcClient = new DataverseMCPToolBoxRpcClient();
+    // Create socket directory for Named Pipes (Unix domain sockets)
+    // Use os.tmpdir() for cross-platform temp directory (respects $TMPDIR on macOS)
+    // Short path to respect 104-char Unix socket limit
+    const socketDir = path.join(os.tmpdir(), 'dvmcptb-sockets');
+    if (!fs.existsSync(socketDir)) {
+        fs.mkdirSync(socketDir, { recursive: true, mode: 0o755 });
+        console.error(`[Extension] Created socket directory: ${socketDir}`);
+    } else {
+        console.error(`[Extension] Socket directory exists: ${socketDir}`);
+    }
+
+    // Cleanup old socket files (orphaned or > 24h old)
+    cleanupOldSockets(socketDir);
+
+    // Create output channel for server logs
+    const serverOutputChannel = vscode.window.createOutputChannel('Dataverse MCP Server');
+    context.subscriptions.push(serverOutputChannel);
+
+    // Initialize RPC client with output channel for logging
+    rpcClient = new DataverseMCPToolBoxRpcClient(serverOutputChannel);
 
     // Initialize MCP provider
     mcpProvider = new McpServerDefinitionProvider(context);
@@ -314,7 +333,8 @@ async function ensureServerAndConnect(
     try {
         const serverPath = await serverManager.ensureServerInstalled();
         const pluginDirectory = path.join(context.globalStorageUri.fsPath, 'plugins');
-        await rpcClient.connect(serverPath, pluginDirectory);
+        const socketDir = path.join(os.tmpdir(), 'dvmcptb-sockets');
+        await rpcClient.connect(serverPath, pluginDirectory, socketDir);
         console.error('[Extension] Connected to Dataverse RPC server');
         updateServerStatusBar(true);
         updateConnectionContext(true);
@@ -546,6 +566,72 @@ function updateServerStatusBar(connected: boolean): void {
         serverStatusBar.text = '$(warning) Dataverse Server';
         serverStatusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         serverStatusBar.tooltip = 'Dataverse MCP Server is not running. Click to troubleshoot.';
+    }
+}
+
+/**
+ * Cleanup old socket files to prevent accumulation
+ * Removes sockets that are > 24h old or belong to dead processes
+ */
+function cleanupOldSockets(socketDir: string): void {
+    try {
+        if (!fs.existsSync(socketDir)) {
+            return;
+        }
+
+        const files = fs.readdirSync(socketDir);
+        const now = Date.now();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        let removedCount = 0;
+
+        for (const file of files) {
+            // Only process CoreFxPipe_ socket files
+            if (!file.startsWith('CoreFxPipe_')) {
+                continue;
+            }
+
+            const filePath = path.join(socketDir, file);
+            try {
+                const stats = fs.statSync(filePath);
+                const age = now - stats.mtimeMs;
+
+                // Remove if older than 24 hours
+                if (age > twentyFourHours) {
+                    fs.unlinkSync(filePath);
+                    removedCount++;
+                    console.error(`[Cleanup] Removed old socket (${Math.round(age / 3600000)}h old): ${file}`);
+                    continue;
+                }
+
+                // Extract PID from filename (CoreFxPipe_30896 -> 30896)
+                const pidMatch = file.match(/CoreFxPipe_(\d+)/);
+                if (pidMatch) {
+                    const pid = parseInt(pidMatch[1], 10);
+                    
+                    // Check if process is still running
+                    try {
+                        process.kill(pid, 0); // Signal 0 checks if process exists without killing it
+                    } catch (error: any) {
+                        if (error.code === 'ESRCH') {
+                            // Process doesn't exist, remove socket
+                            fs.unlinkSync(filePath);
+                            removedCount++;
+                            console.error(`[Cleanup] Removed orphaned socket (PID ${pid} not running): ${file}`);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`[Cleanup] Error processing ${file}: ${error}`);
+            }
+        }
+
+        if (removedCount > 0) {
+            console.error(`[Cleanup] Removed ${removedCount} old socket file(s)`);
+        } else {
+            console.error('[Cleanup] No old sockets to remove');
+        }
+    } catch (error) {
+        console.error(`[Cleanup] Error during socket cleanup: ${error}`);
     }
 }
 
