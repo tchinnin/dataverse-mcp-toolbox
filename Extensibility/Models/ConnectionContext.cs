@@ -6,7 +6,13 @@ namespace DataverseMCPToolBox.Extensibility.Models;
 
 /// <summary>
 /// Sealed implementation of IDataverseContext providing access to an authenticated Dataverse connection.
+/// All properties are immutable after construction (init-only).
 /// </summary>
+/// <remarks>
+/// While the properties themselves are init-only and cannot be reassigned, the CancellationToken
+/// represents observable state that can transition to cancelled. This is by design - the token
+/// reference is immutable, but the cancellation state it represents can change during execution.
+/// </remarks>
 public sealed class ConnectionContext : IDataverseContext
 {
     /// <inheritdoc />

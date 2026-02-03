@@ -1,6 +1,7 @@
 using System.Reflection;
 using DataverseMCPToolBox.Extensibility.Attributes;
 using DataverseMCPToolBox.Extensibility.Abstractions;
+using DataverseMCPToolBox.Extensibility.Helpers;
 
 namespace DataverseMCPToolBox.Extensibility;
 
@@ -58,10 +59,23 @@ public sealed class PluginManifest
     /// <returns>Collection of discovered plugin manifests</returns>
     public static IEnumerable<PluginManifest> DiscoverPlugins(params Assembly[] assemblies)
     {
+        // Validate input
+        if (assemblies == null || assemblies.Length == 0)
+        {
+            Logger.LogWarning("PluginManifest", "No assemblies provided for plugin discovery");
+            return Enumerable.Empty<PluginManifest>();
+        }
+
         var manifests = new List<PluginManifest>();
 
         foreach (var assembly in assemblies)
         {
+            if (assembly == null)
+            {
+                Logger.LogWarning("PluginManifest", "Null assembly in discovery list, skipping");
+                continue;
+            }
+
             try
             {
                 var types = assembly.GetTypes();
@@ -75,13 +89,13 @@ public sealed class PluginManifest
 
                     if (!typeof(IPlugin).IsAssignableFrom(type))
                     {
-                        Console.Error.WriteLine($"[PluginManifest] Type {type.FullName} has [McpPlugin] but does not implement IPlugin. Skipping.");
+                        Logger.LogWarning("PluginManifest", $"Type {type.FullName} has [McpPlugin] but does not implement IPlugin. Skipping.");
                         continue;
                     }
 
                     if (type.IsAbstract || type.IsInterface)
                     {
-                        Console.Error.WriteLine($"[PluginManifest] Type {type.FullName} is abstract or interface. Skipping.");
+                        Logger.LogWarning("PluginManifest", $"Type {type.FullName} is abstract or interface. Skipping.");
                         continue;
                     }
 
@@ -96,12 +110,12 @@ public sealed class PluginManifest
                     };
 
                     manifests.Add(manifest);
-                    Console.Error.WriteLine($"[PluginManifest] Discovered plugin: {manifest.Name} v{manifest.Version} from {assembly.GetName().Name}");
+                    Logger.LogSuccess("PluginManifest", $"Discovered plugin: {manifest.Name} v{manifest.Version} from {assembly.GetName().Name}");
                 }
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[PluginManifest] Error scanning assembly {assembly.FullName}: {ex.Message}");
+                Logger.LogException("PluginManifest", ex, $"Error scanning assembly {assembly.FullName}");
             }
         }
 

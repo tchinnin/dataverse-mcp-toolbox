@@ -4,8 +4,6 @@ using DataverseMCPToolBox.Extensibility.Helpers;
 using DataverseMCPToolBox.Extensibility.Models;
 using NJsonSchema;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
 
 namespace DataverseMCPToolBox.Extensibility;
 
@@ -18,11 +16,7 @@ namespace DataverseMCPToolBox.Extensibility;
 /// <typeparam name="TOutput">The output result type from the tool</typeparam>
 public abstract class McpToolBase<TInput, TOutput> : IMcpTool
 {
-    private static readonly JsonSerializerSettings _jsonSettings = new()
-    {
-        ContractResolver = new CamelCasePropertyNamesContractResolver(),
-        NullValueHandling = NullValueHandling.Ignore
-    };
+    private static readonly JsonSerializerSettings _jsonSettings = JsonSerializationSettings.CamelCaseSettings;
 
     /// <inheritdoc />
     public string Name { get; }
@@ -48,9 +42,6 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
         if (string.IsNullOrWhiteSpace(description))
             throw new ArgumentException("Tool description cannot be null or empty", nameof(description));
 
-        if (!SchemaGenerator.IsValidKebabCase(name))
-            throw new ArgumentException($"Tool name '{name}' must be in kebab-case format (e.g., 'list-entities', 'create-record')", nameof(name));
-
         // Enforce kebab-case naming convention
         if (!SchemaGenerator.IsValidKebabCase(name))
         {
@@ -64,7 +55,7 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
         Description = description;
         InputSchema = SchemaGenerator.GenerateSchema<TInput>();
 
-        Console.Error.WriteLine($"[{GetType().Name}] Tool '{name}' initialized");
+        Logger.LogInfo(GetType().Name, $"Tool '{name}' initialized");
     }
 
     /// <inheritdoc />
@@ -75,31 +66,32 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
     {
         try
         {
-            // Deserialize and validate parameters
+            // Validate against schema first (before deserializing)
+            var jsonToValidate = parametersJson ?? "{}";
+            var errors = InputSchema.Validate(jsonToValidate);
+            if (errors.Count > 0)
+            {
+                return ToolExecutionResult.Failure(new ToolError
+                {
+                    Code = ErrorCodes.ValidationError,
+                    Message = "Input parameters failed schema validation",
+                    Details = errors.Select(e => new { e.Property, e.Kind, e.Path }).ToList()
+                });
+            }
+
+            // Deserialize parameters
             TInput? parameters;
             try
             {
                 parameters = string.IsNullOrWhiteSpace(parametersJson)
                     ? default
                     : JsonConvert.DeserializeObject<TInput>(parametersJson, _jsonSettings);
-
-                // Validate against schema
-                var errors = InputSchema.Validate(parametersJson ?? "{}");
-                if (errors.Count > 0)
-                {
-                    return ToolExecutionResult.Failure(new ToolError
-                    {
-                        Code = "VALIDATION_ERROR",
-                        Message = "Input parameters failed schema validation",
-                        Details = errors.Select(e => new { e.Property, e.Kind, e.Path }).ToList()
-                    });
-                }
             }
             catch (JsonException ex)
             {
                 return ToolExecutionResult.Failure(new ToolError
                 {
-                    Code = "VALIDATION_ERROR",
+                    Code = ErrorCodes.ValidationError,
                     Message = $"Failed to parse input parameters: {ex.Message}"
                 });
             }
@@ -122,13 +114,13 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
         {
             return ToolExecutionResult.Failure(new ToolError
             {
-                Code = "OPERATION_CANCELLED",
+                Code = ErrorCodes.OperationCancelled,
                 Message = "Tool execution was cancelled"
             });
         }
         catch (Exception ex)
         {
-            LogError($"Unexpected error in tool '{Name}': {ex}");
+            Logger.LogException(GetType().Name, ex, $"Unexpected error in tool '{Name}'");
             return ToolExecutionResult.Failure(ex);
         }
     }
@@ -139,7 +131,7 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
     /// <param name="message">The message to log</param>
     protected void LogError(string message)
     {
-        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+        Logger.LogError(GetType().Name, message);
     }
 
     /// <summary>
@@ -148,7 +140,16 @@ public abstract class McpToolBase<TInput, TOutput> : IMcpTool
     /// <param name="message">The message to log</param>
     protected void LogInfo(string message)
     {
-        Console.Error.WriteLine($"[{GetType().Name}] {message}");
+        Logger.LogInfo(GetType().Name, message);
+    }
+
+    /// <summary>
+    /// Logs a warning message with the tool class name prefix.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    protected void LogWarning(string message)
+    {
+        Logger.LogWarning(GetType().Name, message);
     }
 
     /// <summary>
