@@ -1,4 +1,5 @@
 using DataverseMCPToolBox.Models;
+using DataverseMCPToolBox.Helpers;
 
 namespace DataverseMCPToolBox.Services;
 
@@ -7,6 +8,7 @@ namespace DataverseMCPToolBox.Services;
 /// </summary>
 public class ToolManager : IToolManager
 {
+    private const string ServiceName = "ToolManager";
     private readonly ToolRegistryService _registryService;
     private readonly ToolExecutionService _executionService;
 
@@ -21,10 +23,14 @@ public class ToolManager : IToolManager
     /// <summary>
     /// Get list of all available tools
     /// </summary>
+    /// <remarks>
+    /// This method is async to match the RPC interface contract, even though the underlying
+    /// operation is synchronous. This allows for future async implementations without breaking changes.
+    /// </remarks>
     public Task<List<ToolInfo>> GetAllToolsAsync()
     {
         var tools = _registryService.GetAllTools();
-        Console.Error.WriteLine($"[ToolManager] Listing {tools.Count} tools");
+        Logger.LogInfo(ServiceName, $"Listing {tools.Count} tools");
         return Task.FromResult(tools);
     }
 
@@ -33,17 +39,17 @@ public class ToolManager : IToolManager
     /// </summary>
     public async Task<ToolCallResult> ExecuteToolAsync(ToolCallRequest request)
     {
-        Console.Error.WriteLine($"[ToolManager] Executing tool: {request.ToolName}");
+        Logger.LogInfo(ServiceName, $"Executing tool: {request.ToolName}");
         
         var result = await _executionService.ExecuteToolAsync(request);
         
         if (result.IsSuccess)
         {
-            Console.Error.WriteLine($"[ToolManager] ✓ Tool '{request.ToolName}' executed successfully");
+            Logger.LogSuccess(ServiceName, $"Tool '{request.ToolName}' executed successfully");
         }
         else
         {
-            Console.Error.WriteLine($"[ToolManager] ✗ Tool '{request.ToolName}' execution failed: {result.Error?.Message}");
+            Logger.LogError(ServiceName, $"Tool '{request.ToolName}' execution failed: {result.Error?.Message}");
         }
 
         return result;

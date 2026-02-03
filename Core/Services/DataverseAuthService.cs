@@ -1,43 +1,40 @@
 using Microsoft.Identity.Client;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using DataverseMCPToolBox.Models;
 
 namespace DataverseMCPToolBox.Services;
 
 /// <summary>
-/// Service d'authentification OAuth pour Dataverse utilisant MSAL
+/// OAuth authentication service for Dataverse using MSAL
 /// </summary>
 public class DataverseAuthService
 {
-    private const string ClientId = "51f81489-12ee-4a9e-aaae-a2591f45987d";
-    private const string Authority = "https://login.microsoftonline.com/organizations";
-    private static readonly string[] Scopes = new[] { "https://dynamics.crm.dynamics.com/.default" };
-
     private readonly IPublicClientApplication _publicClientApp;
 
     public DataverseAuthService()
     {
         _publicClientApp = PublicClientApplicationBuilder
-            .Create(ClientId)
-            .WithAuthority(Authority)
+            .Create(AuthenticationConstants.ClientId)
+            .WithAuthority(AuthenticationConstants.Authority)
             .WithRedirectUri("http://localhost")
             .Build();
     }
 
     /// <summary>
-    /// Authentifie l'utilisateur via un flux OAuth interactif dans le navigateur
+    /// Authenticate user via interactive OAuth flow in browser
     /// </summary>
-    /// <param name="environmentUrl">URL de l'environnement Dataverse (ex: https://org.crm.dynamics.com)</param>
-    /// <returns>Le token d'accès pour se connecter à Dataverse</returns>
+    /// <param name="environmentUrl">Dataverse environment URL (e.g., https://org.crm.dynamics.com)</param>
+    /// <returns>Authentication result with access token for Dataverse connection</returns>
     public async Task<AuthenticationResult> AuthenticateInteractiveAsync(string environmentUrl)
     {
         try
         {
-            // Extraire le scope spécifique à l'environnement
+            // Extract environment-specific scope
             var uri = new Uri(environmentUrl);
             var scope = $"{uri.Scheme}://{uri.Host}/.default";
 
-            // Tenter d'obtenir un token silencieusement d'abord (depuis le cache)
+            // Try to get token silently first (from cache)
             var accounts = await _publicClientApp.GetAccountsAsync();
             if (accounts.Any())
             {
@@ -49,41 +46,41 @@ public class DataverseAuthService
                 }
                 catch (MsalUiRequiredException)
                 {
-                    // Le token silencieux a échoué, on continue avec l'authentification interactive
+                    // Silent token acquisition failed, continue with interactive authentication
                 }
             }
 
-            // Authentification interactive - lance le navigateur
+            // Interactive authentication - launches browser
             var result = await _publicClientApp
                 .AcquireTokenInteractive(new[] { scope })
                 .WithPrompt(Prompt.SelectAccount)
-                .WithUseEmbeddedWebView(false) // Utilise le navigateur système
+                .WithUseEmbeddedWebView(false) // Use system browser
                 .ExecuteAsync();
 
             return result;
         }
         catch (MsalException ex)
         {
-            throw new InvalidOperationException($"Erreur d'authentification: {ex.Message}", ex);
+            throw new InvalidOperationException($"Authentication error: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// Authentifie avec un token existant ou tente de le rafraîchir
+    /// Authenticate with existing token or attempt to refresh it
     /// </summary>
-    /// <param name="environmentUrl">URL de l'environnement Dataverse</param>
-    /// <param name="accessToken">Token d'accès existant</param>
-    /// <param name="refreshToken">Token de rafraîchissement (peut être null)</param>
-    /// <returns>Le résultat de l'authentification</returns>
+    /// <param name="environmentUrl">Dataverse environment URL</param>
+    /// <param name="accessToken">Existing access token</param>
+    /// <param name="refreshToken">Refresh token (can be null)</param>
+    /// <returns>Authentication result</returns>
     public async Task<AuthenticationResult> AuthenticateWithTokenAsync(string environmentUrl, string accessToken, string? refreshToken)
     {
         try
         {
-            // Extraire le scope spécifique à l'environnement
+            // Extract environment-specific scope
             var uri = new Uri(environmentUrl);
             var scope = $"{uri.Scheme}://{uri.Host}/.default";
 
-            // Tenter d'obtenir un token silencieusement depuis le cache MSAL
+            // Try to get token silently from MSAL cache
             var accounts = await _publicClientApp.GetAccountsAsync();
             if (accounts.Any())
             {
@@ -97,16 +94,16 @@ public class DataverseAuthService
                 }
                 catch (MsalUiRequiredException)
                 {
-                    // Le token ne peut pas être rafraîchi silencieusement
-                    throw new InvalidOperationException("Le token a expiré et nécessite une nouvelle authentification interactive");
+                    // Token cannot be refreshed silently
+                    throw new InvalidOperationException("Token has expired and requires interactive authentication");
                 }
             }
 
-            throw new InvalidOperationException("Aucun compte en cache, authentification interactive requise");
+            throw new InvalidOperationException("No cached account, interactive authentication required");
         }
         catch (MsalException ex)
         {
-            throw new InvalidOperationException($"Erreur lors du rafraîchissement du token: {ex.Message}", ex);
+            throw new InvalidOperationException($"Error refreshing token: {ex.Message}", ex);
         }
     }
 }

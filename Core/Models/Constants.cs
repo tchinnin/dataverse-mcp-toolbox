@@ -71,3 +71,64 @@ public static class ErrorCodes
     public const string PluginLoadError = "PLUGIN_LOAD_ERROR";
     public const string AuthenticationError = "AUTHENTICATION_ERROR";
 }
+
+/// <summary>
+/// OAuth authentication constants for Microsoft Dataverse
+/// </summary>
+public static class AuthenticationConstants
+{
+    /// <summary>
+    /// Microsoft Business Applications client ID for OAuth authentication
+    /// This is a well-known public client ID for Power Platform applications
+    /// </summary>
+    public const string ClientId = "51f81489-12ee-4a9e-aaae-a2591f45987d";
+
+    /// <summary>
+    /// Microsoft identity platform authority URL for multi-tenant authentication
+    /// </summary>
+    public const string Authority = "https://login.microsoftonline.com/organizations";
+
+    /// <summary>
+    /// Default OAuth scope for Dataverse API access
+    /// This is the global scope that works across all Dataverse environments
+    /// </summary>
+    public const string DefaultScope = "https://dynamics.crm.dynamics.com/.default";
+}
+
+/// <summary>
+/// Model Context Protocol (MCP) constants
+/// </summary>
+public static class McpProtocolConstants
+{
+    /// <summary>
+    /// Current MCP protocol version supported by this server
+    /// Format: YYYY-MM-DD
+    /// </summary>
+    public const string CurrentVersion = "2024-11-05";
+
+    /// <summary>
+    /// Server name identifier for MCP protocol
+    /// </summary>
+    public const string ServerName = "dataverse-mcp-toolbox";
+
+    /// <summary>
+    /// Server version for MCP protocol
+    /// </summary>
+    public const string ServerVersion = "0.1.0";
+}
+
+/// <summary>
+/// Package source constants for plugin management
+/// </summary>
+public static class PackageSourceConstants
+{
+    /// <summary>
+    /// Default NuGet package source URL
+    /// </summary>
+    public const string DefaultNuGetSource = "https://api.nuget.org/v3/index.json";
+
+    /// <summary>
+    /// NuGet.org display name for error messages
+    /// </summary>
+    public const string NuGetOrgName = "NuGet.org";
+}

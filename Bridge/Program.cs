@@ -125,7 +125,7 @@ class Program
         string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
         Console.Error.WriteLine($"{LogPrefix} Temp path: {tempPath}");
         
-        if (PipePathHelper.IsUnix)
+        if (PlatformHelper.IsUnix)
         {
             string socketPath = PipePathHelper.GetUnixSocketPath(pipeName);
             Console.Error.WriteLine($"{LogPrefix} Expected socket: {socketPath}");

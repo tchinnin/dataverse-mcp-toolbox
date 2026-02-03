@@ -5,7 +5,7 @@ namespace DataverseMCPToolBox.Models.Mcp;
 /// </summary>
 public class InitializeRequest
 {
-    public string ProtocolVersion { get; set; } = "2024-11-05";
+    public string ProtocolVersion { get; set; } = McpProtocolConstants.CurrentVersion;
     public ClientInfo ClientInfo { get; set; } = new();
     public ClientCapabilities? Capabilities { get; set; }
 }
@@ -15,7 +15,7 @@ public class InitializeRequest
 /// </summary>
 public class InitializeResult
 {
-    public string ProtocolVersion { get; set; } = "2024-11-05";
+    public string ProtocolVersion { get; set; } = McpProtocolConstants.CurrentVersion;
     public ServerInfo ServerInfo { get; set; } = new();
     public ServerCapabilities Capabilities { get; set; } = new();
 }
@@ -34,8 +34,8 @@ public class ClientInfo
 /// </summary>
 public class ServerInfo
 {
-    public string Name { get; set; } = "dataverse-mcp-toolbox";
-    public string Version { get; set; } = "0.1.0";
+    public string Name { get; set; } = McpProtocolConstants.ServerName;
+    public string Version { get; set; } = McpProtocolConstants.ServerVersion;
 }
 
 /// <summary>

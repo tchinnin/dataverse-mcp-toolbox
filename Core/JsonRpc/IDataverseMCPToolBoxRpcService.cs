@@ -17,7 +17,6 @@ public interface IDataverseMCPToolBoxRpcService
     Task SetActiveConnectionAsync(string connectionId);
 
     // Plugin management
-    Task SetPluginDirectoryAsync(string directoryPath);
     Task<PluginInstallResult> InstallPluginAsync(PluginInstallRequest request);
     Task<bool> UninstallPluginAsync(string packageId);
     Task ReloadPluginsAsync();

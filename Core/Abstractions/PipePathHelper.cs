@@ -19,6 +19,8 @@ public static class PipePathHelper
     /// </summary>
     /// <param name="pipeName">The pipe name (without platform-specific prefix)</param>
     /// <returns>Full path to the Unix socket file</returns>
+    /// <exception cref="ArgumentException">Thrown when pipe name is null or empty</exception>
+    /// <exception cref="InvalidOperationException">Thrown when socket path exceeds Unix limit</exception>
     public static string GetUnixSocketPath(string pipeName)
     {
         if (string.IsNullOrWhiteSpace(pipeName))
@@ -27,16 +29,16 @@ public static class PipePathHelper
         }
 
         var tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
-        return Path.Combine(tempPath, $"{UnixSocketPrefix}{pipeName}");
+        var socketPath = Path.Combine(tempPath, $"{UnixSocketPrefix}{pipeName}");
+        
+        // Validate socket path length for Unix systems
+        if (PlatformHelper.IsUnix && socketPath.Length > Models.NetworkConstants.UnixSocketPathLimit)
+        {
+            throw new InvalidOperationException(
+                $"Unix socket path exceeds maximum length of {Models.NetworkConstants.UnixSocketPathLimit} characters. " +
+                $"Path: {socketPath} (length: {socketPath.Length})");
+        }
+        
+        return socketPath;
     }
-
-    /// <summary>
-    /// Check if the current platform is Windows
-    /// </summary>
-    public static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-
-    /// <summary>
-    /// Check if the current platform is Unix-based (macOS or Linux)
-    /// </summary>
-    public static bool IsUnix => !IsWindows;
 }

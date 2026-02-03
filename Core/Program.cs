@@ -1,5 +1,6 @@
 using DataverseMCPToolBox.JsonRpc;
 using DataverseMCPToolBox.Services;
+using DataverseMCPToolBox.Helpers;
 using System.Diagnostics;
 
 namespace DataverseMCPToolBox;
