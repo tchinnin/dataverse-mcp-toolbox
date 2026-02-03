@@ -6,23 +6,54 @@ applyTo: "Core/**"
 
 ## Principes architecturaux
 
-### Communication JSON-RPC via stdio
-Le serveur .NET est un processus autonome qui communique exclusivement via **stdin/stdout** avec le client TypeScript.
+### Architecture Sidecar
+Le serveur .NET suit une **architecture sidecar** composée de deux applications :
+1. **Core Server** : Serveur principal gérant l'état, les connexions Dataverse, et l'exécution des outils
+2. **MCP Bridge** : Adaptateur protocol pour GitHub Copilot (communication MCP)
 
-#### Règles critiques pour stdio
+### Séparation des préoccupations
+
+#### Couche Communication (Transport Layer)
+- **Responsabilité** : Transport des messages entre processus
+- **Abstraction** : Utilise des interfaces génériques (`IRpcServer`, `IRpcClient`)
+- **Implémentation** : Peut être remplacée sans impacter les services métier
+- **Isolation** : Les services ne doivent JAMAIS dépendre du protocole de transport
+
+#### Couche Service (Business Logic)
+- **Responsabilité** : Logique métier Dataverse et gestion des outils
+- **Indépendance** : Aucune dépendance sur le transport inter-processus
+- **Réutilisabilité** : Services utilisables dans n'importe quelle architecture de communication
+- **Testabilité** : Services testables sans infrastructure de transport
+
+#### Couche Données (Models/DTOs)
+- **Responsabilité** : Structures de données partagées entre client et serveur
+- **Sérialisation** : Facilement sérialisables en JSON
+- **Validation** : Validation des données à l'entrée des services
+
+### Règles critiques pour les logs
 ⚠️ **ABSOLUMENT IMPÉRATIF** ⚠️
-- **stdout** est réservé EXCLUSIVEMENT aux messages JSON-RPC (HeaderDelimitedMessageHandler)
+
+#### Core Server
 - **stderr** est le SEUL canal autorisé pour les logs, traces, et messages de débogage
-- **stdin** reçoit les requêtes JSON-RPC du client
+- **stdout** ne doit JAMAIS être utilisé (réservé pour données structurées si nécessaire)
+- Les canaux de communication (pipes, sockets, etc.) transportent des données, pas des logs
+
+#### MCP Bridge
+- **stderr** pour tous les logs
+- **stdout** uniquement pour la communication avec Copilot (protocole MCP)
+- **stdin** uniquement pour recevoir les requêtes Copilot
 
 ```csharp
-// ✅ CORRECT - Logging
+// ✅ CORRECT - Logging Core Server
 Console.Error.WriteLine("Server starting...");
 Trace.WriteLine("Debug info"); // Si redirigé vers stderr
 
-// ❌ INTERDIT - Corrompt le flux JSON-RPC
-Console.WriteLine("Log message"); // NE JAMAIS FAIRE ÇA
-Console.Out.WriteLine("Info"); // NE JAMAIS FAIRE ÇA
+// ✅ CORRECT - Logging MCP Bridge
+Console.Error.WriteLine("[Bridge] Forwarding request...");
+
+// ❌ INTERDIT - Corrompt les flux de données
+Console.WriteLine("Log message"); // NE JAMAIS FAIRE ÇA dans Core Server!
+Console.Out.WriteLine("Info");     // NE JAMAIS FAIRE ÇA!
 ```
 
 ### Configuration du Trace Listener
@@ -33,39 +64,118 @@ Trace.Listeners.Add(new TextWriterTraceListener(Console.Error));
 Trace.AutoFlush = true;
 ```
 
-## Structure du serveur JSON-RPC
+## Structure du serveur
 
 ### Program.cs - Point d'entrée
-Le `Main` doit :
+
+#### Core Server
+Le `Main` du Core Server doit :
 1. Rediriger tous les logs vers stderr
-2. Créer le service RPC
-3. Configurer le formatter JSON avec CamelCase
-4. Créer le HeaderDelimitedMessageHandler sur stdin/stdout
-5. Démarrer l'écoute JSON-RPC
-6. Attendre la fin de la connexion
-7. Gérer les exceptions fatales avec exit code 1
+2. Lire les variables d'environnement de configuration
+3. Initialiser les services métier (singleton partagé entre clients)
+4. Démarrer le serveur de communication (via interface `IRpcServer`)
+5. Accepter les connexions clientes et créer des sessions
+6. Gérer le cycle de vie et l'arrêt gracieux
 
 ```csharp
-var formatter = new JsonMessageFormatter
+// Structure générique du Core Server
+static async Task Main(string[] args)
 {
-    JsonSerializer = 
-    {
-        ContractResolver = new CamelCasePropertyNamesContractResolver()
-    }
-};
-
-var messageHandler = new HeaderDelimitedMessageHandler(
-    Console.OpenStandardOutput(), 
-    Console.OpenStandardInput(), 
-    formatter
-);
+    // 1. Configuration des logs
+    Trace.Listeners.Add(new TextWriterTraceListener(Console.Error));
+    Trace.AutoFlush = true;
+    
+    Console.Error.WriteLine("Core Server starting...");
+    
+    // 2. Lecture configuration depuis env vars
+    string pipeName = Environment.GetEnvironmentVariable("DATAVERSE_MCP_PIPE_NAME") 
+                      ?? "default-pipe";
+    string pluginDir = Environment.GetEnvironmentVariable("DATAVERSE_MCP_PLUGIN_DIR")
+                      ?? Path.Combine(Environment.GetFolderPath(
+                          Environment.SpecialFolder.UserProfile), 
+                          ".dataverse-mcp-toolbox", "plugins");
+    
+    // 3. Initialisation des services (singleton)
+    var managementService = new DataverseMCPToolBoxRpcService(pluginDir);
+    
+    // 4. Démarrage du serveur (abstraction via IRpcServer)
+    var rpcServer = new CommunicationServer(pipeName); // Implémentation spécifique
+    rpcServer.RegisterService(managementService);
+    
+    var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+    
+    await rpcServer.StartAsync(cts.Token);
+    
+    Console.Error.WriteLine("Core Server stopped");
+}
 ```
 
-### Interface RPC (IDataverseMCPToolBoxRpcService)
-- Définit le contrat RPC partagé entre serveur et client
-- **Toutes les méthodes doivent retourner Task ou Task<T>**
-- Noms de méthodes en PascalCase avec suffixe `Async`
-- Paramètres sérialisables en JSON uniquement
+#### MCP Bridge
+Le `Main` du MCP Bridge doit :
+1. Rediriger tous les logs vers stderr
+2. Lire les variables d'environnement (pipe name, etc.)
+3. Se connecter au Core Server (via interface `IRpcClient`)
+4. Gérer la communication bidirectionnelle stdin/stdout avec Copilot
+5. Traduire les requêtes MCP vers le format Core et inversement
+
+```csharp
+// Structure générique du MCP Bridge
+static async Task Main(string[] args)
+{
+    // 1. Configuration des logs
+    Trace.Listeners.Add(new TextWriterTraceListener(Console.Error));
+    Trace.AutoFlush = true;
+    
+    Console.Error.WriteLine("MCP Bridge starting...");
+    
+    // 2. Lecture configuration
+    string pipeName = Environment.GetEnvironmentVariable("DATAVERSE_MCP_PIPE_NAME");
+    if (string.IsNullOrEmpty(pipeName))
+    {
+        Console.Error.WriteLine("ERROR: DATAVERSE_MCP_PIPE_NAME not set");
+        Environment.Exit(1);
+    }
+    
+    // 3. Connexion au Core Server
+    var coreClient = new CommunicationClient(pipeName); // Implémentation spécifique
+    await coreClient.ConnectAsync(CancellationToken.None);
+    
+    // 4. Forwarding bidirectionnel stdin/stdout ↔ Core
+    await ForwardMessagesAsync(Console.OpenStandardInput(), 
+                               Console.OpenStandardOutput(),
+                               coreClient);
+}
+```
+
+### Interfaces de communication
+
+#### IRpcServer (Core Server)
+Interface abstraite pour le serveur de communication :
+
+```csharp
+public interface IRpcServer
+{
+    Task StartAsync(CancellationToken cancellationToken);
+    Task StopAsync();
+    void RegisterService(object service);
+}
+```
+
+#### IRpcClient (MCP Bridge)
+Interface abstraite pour le client de communication :
+
+```csharp
+public interface IRpcClient
+{
+    Task ConnectAsync(CancellationToken cancellationToken);
+    Task DisconnectAsync();
+    Task<TResult> InvokeAsync<TResult>(string method, object? args);
+}
+```
+
+### Interface RPC Service (Contrat métier)
+Définit le contrat métier entre serveur et clients :
 
 ```csharp
 public interface IDataverseMCPToolBoxRpcService
@@ -74,33 +184,72 @@ public interface IDataverseMCPToolBoxRpcService
     Task<bool> TestConnectionAsync(string connectionId);
     Task<OrganizationDetail?> GetOrganizationDetailsAsync(string connectionId);
     Task<WhoAmIResult> GetWhoAmIAsync(string connectionId);
+    Task<ToolCallResult> ExecuteToolAsync(ToolCallRequest request);
     Task CloseConnectionAsync(string connectionId);
     Task CloseAllConnectionsAsync();
 }
 ```
 
-### Implémentation RPC (DataverseMCPToolBoxRpcService)
-- Implémente l'interface RPC
-- Délègue la logique métier aux services (`DataverseConnectionService`, etc.)
-- Gère la conversion des exceptions en résultats
-- **NE PAS logger sur stdout**, utiliser stderr si besoin
+Caractéristiques :
+- Toutes les méthodes retournent `Task` ou `Task<T>`
+- Noms en PascalCase avec suffixe `Async`
+- Paramètres sérialisables en JSON uniquement
+- Indépendant du protocole de transport
+
+### Implémentation RPC Service (DataverseMCPToolBoxRpcService)
+- Implémente l'interface RPC métier
+- Délègue la logique aux services spécialisés
+- Gestion de la conversion des exceptions en résultats
+- **Transport-agnostic** : ne dépend d'aucun protocole de communication
 
 ```csharp
 public class DataverseMCPToolBoxRpcService : IDataverseMCPToolBoxRpcService
 {
+    private readonly ConnectionStateService _connectionState;
     private readonly DataverseConnectionService _connectionService;
+    private readonly ToolExecutionService _toolExecutionService;
     
-    // Injection de dépendances ou instanciation des services
-    public DataverseMCPToolBoxRpcService()
+    public DataverseMCPToolBoxRpcService(string pluginDirectory)
     {
-        _connectionService = new DataverseConnectionService();
+        _connectionState = new ConnectionStateService();
+        _connectionService = new DataverseConnectionService(_connectionState);
+        
+        var pluginManager = new PluginManager(pluginDirectory);
+        _toolExecutionService = new ToolExecutionService(
+            _connectionState, 
+            pluginManager
+        );
     }
     
-    // Implémentation des méthodes...
+    public async Task<ConnectionResult> CreateConnectionAsync(
+        ConnectionRequest request)
+    {
+        // Délégation au service spécialisé
+        return await _connectionService.CreateConnectionAsync(request);
+    }
+    
+    // Autres méthodes...
 }
 ```
 
-## Modèles de données (DTOs)
+## Services métier (Business Logic)
+
+### Principes de conception
+
+⚠️ **CRITIQUE** : Les services métier doivent être **totalement indépendants** du protocole de communication
+
+#### Ce qu'un service NE DOIT PAS faire :
+- ❌ Référencer des types de transport (NamedPipe, TcpClient, Socket, Stream)
+- ❌ Dépendre de StreamJsonRpc ou d'autres librairies RPC
+- ❌ Accéder à Console.In ou Console.Out (seulement Console.Error pour logs)
+- ❌ Connaître l'existence de clients ou de sessions
+
+#### Ce qu'un service DOIT faire :
+- ✅ Exposer des méthodes async avec paramètres et retours sérialisables
+- ✅ Gérer sa propre logique métier de manière autonome
+- ✅ Utiliser l'injection de dépendances via constructeur
+- ✅ Logger sur stderr uniquement
+- ✅ Retourner des résultats structurés (pas d'exceptions non catchées)
 
 ### Localisation
 Tous les DTOs dans `Core/Models/`
@@ -221,43 +370,141 @@ catch (Exception ex)
 
 ## Build et publication
 
-### Projet .csproj
-- Target framework : `net8.0` ou supérieur
-- RuntimeIdentifiers pour cross-platform :
-  - `osx-arm64` (Apple Silicon)
-  - `osx-x64` (Intel Mac)
-  - `win-x64` (Windows)
-  - `linux-x64` (Linux)
-- PublishSingleFile : true (exécutable unique)
-- SelfContained : true (inclut le runtime .NET)
+### Structure des packages
 
-### Scripts de build
-Utiliser les scripts dans `Core/scripts/` :
+#### 1. NuGet Package Runtime (`DataverseMCPToolBox.Runtime`)
+Contient Core Server + MCP Bridge pour toutes les plateformes.
 
-```bash
-# macOS/Linux
-./build-publish.sh
-
-# Windows
-.\build-publish.ps1
+**Configuration .csproj** :
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
 ```
 
-Ces scripts créent des binaires self-contained pour toutes les plateformes dans `Core/publish/<runtime>/`
+**Plateformes supportées** :
+- `osx-arm64` (Apple Silicon)
+- `osx-x64` (Intel Mac)
+- `win-x64` (Windows 64-bit)
+- `linux-x64` (Linux 64-bit)
 
-### Commande manuelle
+#### 2. NuGet Package Extensibility (`DataverseMCPToolBox.Extensibility`)
+SDK pour créer des plugins custom.
+
+**Contenu** :
+- Interfaces : `IPlugin`, `IMcpTool`, `IDataverseContext`
+- Classes de base : `PluginBase`, `McpToolBase`
+- Attributs : `[McpPlugin]`, `[McpTool]`
+- Helpers : `SchemaGenerator`
+
+### Scripts de build
+
+#### Build global (depuis racine)
 ```bash
-dotnet publish -c Release -r <runtime> -o ./publish/<runtime> --self-contained
+# macOS/Linux
+./scripts/build-all.sh
+
+# Windows PowerShell
+.\scripts\build-all.ps1
+```
+
+Ces scripts :
+1. Buildent Core Server pour les 4 plateformes
+2. Buildent MCP Bridge pour les 4 plateformes
+3. Génèrent les binaires dans `Core/publish/<platform>/` et `Bridge/publish/<platform>/`
+
+#### Packaging NuGet
+```bash
+# Depuis Core/
+./scripts/pack-nuget.sh      # ou pack-nuget.ps1
+
+# Résultat : Core/nupkg/DataverseMCPToolBox.Runtime.x.y.z.nupkg
+```
+
+#### Publication NuGet
+```bash
+dotnet nuget push Core/nupkg/DataverseMCPToolBox.Runtime.*.nupkg \
+  --api-key <key> \
+  --source https://api.nuget.org/v3/index.json
+
+dotnet nuget push Extensibility/nupkg/DataverseMCPToolBox.Extensibility.*.nupkg \
+  --api-key <key> \
+  --source https://api.nuget.org/v3/index.json
+```
+
+### Développement local
+
+#### Script de copy locale
+Pour tester sans publier sur NuGet :
+
+```bash
+# Depuis racine
+./scripts/install-local.sh      # ou install-local.ps1
+
+# Ce script :
+# 1. Build Core + Bridge
+# 2. Crée package NuGet local
+# 3. Copie les binaires vers Extension/server/ pour debug
+# 4. Rend exécutables (Unix)
+```
+
+**Usage développement** :
+1. Modifier code dans Core ou Bridge
+2. Lancer `./scripts/install-local.sh`
+3. F5 dans VS Code Extension Development Host
+4. Les binaires locaux sont utilisés automatiquement
+
+### Multi-plateforme
+
+#### Détection de plateforme runtime
+```csharp
+using System.Runtime.InteropServices;
+
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    // Code Windows-specific
+}
+else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+{
+    // Code macOS-specific  
+}
+else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+{
+    // Code Linux-specific
+}
+```
+
+#### Chemins de fichiers cross-platform
+```csharp
+// ✅ BON - Path.Combine est cross-platform
+var path = Path.Combine(baseDir, "subfolder", "file.txt");
+
+// ❌ MAUVAIS - Hardcoded separators
+var path = baseDir + "\\subfolder\\file.txt"; // Échoue sur Unix
 ```
 
 ### Checklist avant publication
-- [ ] Compiler sans warnings
-- [ ] Tester chaque méthode RPC individuellement
-- [ ] Vérifier qu'aucun `Console.WriteLine` ne pollue stdout
-- [ ] Vérifier les logs stderr sont clairs et utiles
-- [ ] Tester l'authentification Dataverse
-- [ ] Vérifier la gestion des erreurs
-- [ ] Tester sur les 4 plateformes cibles
-- [ ] Vérifier la taille des binaires (optimisation si nécessaire)
+
+#### Core + Bridge
+- [ ] Build sans warnings sur toutes les plateformes
+- [ ] Tester sur au moins 2 plateformes (Windows + macOS ou Linux)
+- [ ] Vérifier qu'aucun `Console.WriteLine` ne pollue stdout (Core Server)
+- [ ] Logs stderr clairs et structurés
+- [ ] Tester authentification Dataverse
+- [ ] Vérifier gestion des erreurs
+- [ ] Taille binaires < 50MB par plateforme
+- [ ] Version cohérente dans .csproj
+
+#### Extensibility SDK
+- [ ] Build sans warnings
+- [ ] Documentation XML complète
+- [ ] Exemples de plugins testés
+- [ ] Version cohérente avec Runtime
 
 ## Tests
 

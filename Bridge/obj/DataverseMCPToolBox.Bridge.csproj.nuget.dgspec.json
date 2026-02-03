@@ -1,0 +1,338 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/DataverseMCPToolBox.Bridge.csproj": {}
+  },
+  "projects": {
+    "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/DataverseMCPToolBox.Bridge.csproj": {
+      "version": "0.1.0-alpha",
+      "restore": {
+        "projectUniqueName": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/DataverseMCPToolBox.Bridge.csproj",
+        "projectName": "DataverseMCPToolBox.Bridge",
+        "projectPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/DataverseMCPToolBox.Bridge.csproj",
+        "packagesPath": "/Users/tchinnin/.nuget/packages/",
+        "outputPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/tchinnin/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/DataverseMCPToolBox.csproj": {
+                "projectPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/DataverseMCPToolBox.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.NET.ILLink.Tasks": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.23, )",
+              "autoReferenced": true
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "StreamJsonRpc": {
+              "target": "Package",
+              "version": "[2.19.27, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "linux-x64": {
+          "#import": []
+        }
+      }
+    },
+    "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/DataverseMCPToolBox.csproj": {
+      "version": "0.2.0-alpha",
+      "restore": {
+        "projectUniqueName": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/DataverseMCPToolBox.csproj",
+        "projectName": "DataverseMCPToolBox.Runtime",
+        "projectPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/DataverseMCPToolBox.csproj",
+        "packagesPath": "/Users/tchinnin/.nuget/packages/",
+        "outputPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Core/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/tchinnin/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/DataverseMCPToolBox.Extensibility.csproj": {
+                "projectPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/DataverseMCPToolBox.Extensibility.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.Extensions.DependencyInjection": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Identity.Client": {
+              "target": "Package",
+              "version": "[4.61.3, )"
+            },
+            "Microsoft.NET.ILLink.Tasks": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.23, )",
+              "autoReferenced": true
+            },
+            "Microsoft.PowerPlatform.Dataverse.Client": {
+              "target": "Package",
+              "version": "[1.1.32, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "NuGet.Protocol": {
+              "target": "Package",
+              "version": "[6.8.0, )"
+            },
+            "StreamJsonRpc": {
+              "target": "Package",
+              "version": "[2.19.27, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "linux-x64": {
+          "#import": []
+        }
+      }
+    },
+    "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/DataverseMCPToolBox.Extensibility.csproj": {
+      "version": "0.1.0-alpha",
+      "restore": {
+        "projectUniqueName": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/DataverseMCPToolBox.Extensibility.csproj",
+        "projectName": "DataverseMCPToolBox.Extensibility",
+        "projectPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/DataverseMCPToolBox.Extensibility.csproj",
+        "packagesPath": "/Users/tchinnin/.nuget/packages/",
+        "outputPath": "/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Extensibility/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/tchinnin/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.NET.ILLink.Tasks": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.23, )",
+              "autoReferenced": true
+            },
+            "Microsoft.PowerPlatform.Dataverse.Client": {
+              "target": "Package",
+              "version": "[1.1.32, )"
+            },
+            "NJsonSchema": {
+              "target": "Package",
+              "version": "[11.0.2, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.23, 8.0.23]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.linux-x64",
+              "version": "[8.0.23, 8.0.23]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "linux-x64": {
+          "#import": []
+        }
+      }
+    }
+  }
+}

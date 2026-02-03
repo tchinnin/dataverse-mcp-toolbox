@@ -39,7 +39,9 @@ export class ConnectionStorageService {
     private migrateFromGlobalState(): void {
         // Check if file already exists
         if (fs.existsSync(this.connectionsFilePath)) {
-            return; // Already migrated
+            // File exists, but check if it contains old-style IDs that need migration
+            this.migrateLegacyConnectionIds();
+            return; // Already migrated from globalState
         }
 
         // Try to get connections from old storage
@@ -54,6 +56,42 @@ export class ConnectionStorageService {
             
             // Clear old storage after successful migration
             this.context.globalState.update(ConnectionStorageService.LEGACY_STORAGE_KEY, undefined);
+        }
+    }
+
+    /**
+     * Migrate connections with old conn_* IDs to server GUIDs
+     * Mark them for re-authentication since we need server to generate new IDs
+     */
+    private migrateLegacyConnectionIds(): void {
+        const connections = this.loadConnections();
+        let needsMigration = false;
+
+        for (const conn of connections) {
+            // Check if this is an old-style ID (starts with "conn_")
+            if (conn.id.startsWith('conn_')) {
+                needsMigration = true;
+                console.log(`[ConnectionStorage] Found legacy connection ID: ${conn.id} (${conn.name})`);
+                
+                // If metadata contains rpcConnectionId, migrate to use it
+                if (conn.metadata?.rpcConnectionId) {
+                    console.log(`[ConnectionStorage] Migrating ${conn.name} from ${conn.id} to ${conn.metadata.rpcConnectionId}`);
+                    conn.id = conn.metadata.rpcConnectionId;
+                    delete conn.metadata.rpcConnectionId;
+                    if (Object.keys(conn.metadata).length === 0) {
+                        delete conn.metadata;
+                    }
+                } else {
+                    // No server ID available - connection will need re-authentication
+                    // For now, keep the old ID but log a warning
+                    console.warn(`[ConnectionStorage] Connection ${conn.name} has legacy ID but no server GUID. Will require re-authentication.`);
+                }
+            }
+        }
+
+        if (needsMigration) {
+            console.log('[ConnectionStorage] Saving migrated connections');
+            this.saveConnections(connections);
         }
     }
 
@@ -101,13 +139,13 @@ export class ConnectionStorageService {
     }
 
     /**
-     * Save a new connection
+     * Save a new connection using server-generated ID
+     * @param id Server-generated GUID from RPC connection
+     * @param name User-friendly connection name
+     * @param url Dataverse environment URL
      */
-    public async addConnection(name: string, url: string): Promise<DataverseConnection> {
+    public async addConnection(id: string, name: string, url: string): Promise<DataverseConnection> {
         const connections = this.getConnections();
-        
-        // Generate a unique ID
-        const id = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         const newConnection: DataverseConnection = {
             id,

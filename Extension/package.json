@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "tchinnin",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.102.0"
   },
   "categories": [
     "Other",
@@ -16,6 +16,12 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "dataverseMcpToolbox",
+        "label": "Dataverse MCP Toolbox"
+      }
+    ],
     "configuration": {
       "title": "Dataverse MCP ToolBox",
       "properties": {
@@ -47,16 +53,18 @@
     "views": {
       "dataverse-connections": [
         {
+          "id": "dataversemcptoolbox.serverInfoView",
+          "name": "MCP Server Info"
+        },
+        {
           "id": "dataverseConnectionsList",
-          "name": "Connections"
+          "name": "Connections",
+          "when": "dataversemcptoolbox.serverConnected"
         },
         {
           "id": "dataversemcptoolbox.pluginsView",
-          "name": "MCP Plugins"
-        },
-        {
-          "id": "dataversemcptoolbox.serverInfoView",
-          "name": "MCP Server Info"
+          "name": "MCP Plugins",
+          "when": "dataversemcptoolbox.serverConnected"
         }
       ]
     },
@@ -64,7 +72,8 @@
       {
         "command": "dataversemcptoolbox.addConnection",
         "title": "Add Connection",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.removeConnection",
@@ -74,7 +83,8 @@
       {
         "command": "dataversemcptoolbox.setActiveConnection",
         "title": "Set as Active Connection",
-        "icon": "$(star-empty)"
+        "icon": "$(star-empty)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.refreshConnections",
@@ -84,27 +94,32 @@
       {
         "command": "dataversemcptoolbox.showWhoAmI",
         "title": "Show WhoAmI Info",
-        "icon": "$(question)"
+        "icon": "$(question)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.refreshPlugins",
         "title": "Refresh Plugins",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.installPlugin",
         "title": "Install Plugin from NuGet",
-        "icon": "$(cloud-download)"
+        "icon": "$(cloud-download)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.uninstallPlugin",
         "title": "Uninstall Plugin",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.callTool",
         "title": "Execute Tool",
-        "icon": "$(play)"
+        "icon": "$(play)",
+        "enablement": "dataversemcptoolbox.serverConnected"
       },
       {
         "command": "dataversemcptoolbox.updateServer",
@@ -137,11 +152,6 @@
         "icon": "$(tag)"
       },
       {
-        "command": "dataversemcptoolbox.openMcpConfiguration",
-        "title": "Dataverse: Open MCP Configuration",
-        "icon": "$(file-code)"
-      },
-      {
         "command": "dataversemcptoolbox.reregisterMcpServer",
         "title": "Dataverse: Re-register MCP Server",
         "icon": "$(sync)"
@@ -150,28 +160,38 @@
         "command": "dataversemcptoolbox.unregisterMcpServer",
         "title": "Dataverse: Unregister MCP Server",
         "icon": "$(close)"
+      },
+      {
+        "command": "dataversemcptoolbox.startServerManually",
+        "title": "Start Dataverse MCP Server",
+        "icon": "$(play)"
+      },
+      {
+        "command": "dataversemcptoolbox.showConnectionDiagnostics",
+        "title": "Show Connection Diagnostics",
+        "icon": "$(info)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "dataversemcptoolbox.addConnection",
-          "when": "view == dataverseConnectionsList",
+          "when": "view == dataverseConnectionsList && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.refreshConnections",
-          "when": "view == dataverseConnectionsList",
+          "when": "view == dataverseConnectionsList && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.refreshPlugins",
-          "when": "view == dataversemcptoolbox.pluginsView",
+          "when": "view == dataversemcptoolbox.pluginsView && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         },
         {
           "command": "dataversemcptoolbox.installPlugin",
-          "when": "view == dataversemcptoolbox.pluginsView",
+          "when": "view == dataversemcptoolbox.pluginsView && dataversemcptoolbox.serverConnected",
           "group": "navigation"
         }
       ],
@@ -221,7 +241,7 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/node": "18.x",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",

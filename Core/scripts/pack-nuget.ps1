@@ -1,25 +1,30 @@
-# Script PowerShell to package the .NET MCP server as a NuGet package
-# This script builds all platform binaries and creates a .nupkg file
+# Script PowerShell to package the Dataverse MCP Toolbox Runtime (Core + Bridge) as a unified NuGet package
+# This script builds all platform binaries for both Core and Bridge, then creates a .nupkg file
 
-Write-Host "🚀 Building and packaging DataverseMCPToolBox.Server..." -ForegroundColor Green
+Write-Host "🚀 Building and packaging DataverseMCPToolBox.Runtime (Core + Bridge)..." -ForegroundColor Green
 
 # Get the directory where this script is located
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
+$RootDir = Split-Path -Parent $ProjectDir
+
+Set-Location $RootDir
+
+Write-Host ""
+Write-Host "📦 Step 1: Building platform-specific binaries (Core + Bridge)..." -ForegroundColor Cyan
+Write-Host "   Running: .\scripts\build-all.ps1" -ForegroundColor Gray
+& "$RootDir\scripts\build-all.ps1"
+
+Write-Host ""
+Write-Host "📦 Step 2: Creating unified NuGet package..." -ForegroundColor Cyan
+Write-Host ""
 
 Set-Location $ProjectDir
-
-Write-Host ""
-Write-Host "📦 Step 1: Building platform-specific binaries..." -ForegroundColor Cyan
-& "$ScriptDir\build-publish.ps1"
-
-Write-Host "📦 Step 2: Creating NuGet package..." -ForegroundColor Cyan
-Write-Host ""
 
 # Create nupkg output directory
 New-Item -ItemType Directory -Force -Path nupkg | Out-Null
 
-# Pack the project (includes binaries from publish folders)
+# Pack the project (includes binaries from Core/publish/* and Bridge/publish/* folders)
 # The .csproj file maps publish/* folders to runtimes/<platform>/native/ structure
 dotnet pack DataverseMCPToolBox.csproj `
     -c Release `
@@ -29,6 +34,7 @@ Write-Host ""
 Write-Host "✅ NuGet package created successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "📋 Package details:" -ForegroundColor Cyan
+Write-Host "   Package ID: DataverseMCPToolBox.Runtime"
 Write-Host "   Location: $ProjectDir\nupkg\"
 Get-ChildItem "$ProjectDir\nupkg\*.nupkg" | ForEach-Object {
     $sizeMB = [math]::Round($_.Length / 1MB, 2)
@@ -40,12 +46,22 @@ Write-Host ""
 $latestPkg = Get-ChildItem "$ProjectDir\nupkg\*.nupkg" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (Get-Command 7z -ErrorAction SilentlyContinue) {
     Write-Host "📦 Package structure verification:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Core Server binaries:" -ForegroundColor Yellow
     $content = & 7z l $latestPkg.FullName
-    $runtimeFiles = $content | Select-String "runtimes/.*/native/DataverseMCPToolBox"
-    if ($runtimeFiles) {
-        $runtimeFiles | ForEach-Object { Write-Host "   ✓ $_" -ForegroundColor Green }
+    $coreFiles = $content | Select-String "runtimes/.*/native/DataverseMCPToolBox[^.]"
+    if ($coreFiles) {
+        $coreFiles | ForEach-Object { Write-Host "   ✓ $_" -ForegroundColor Green }
     } else {
-        Write-Host "   ⚠️  Warning: No binaries found in expected runtimes/<platform>/native/ structure" -ForegroundColor Yellow
+        Write-Host "   ⚠️  Warning: No Core binaries found" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "Bridge binaries:" -ForegroundColor Yellow
+    $bridgeFiles = $content | Select-String "runtimes/.*/native/DataverseMCPToolBox.Bridge"
+    if ($bridgeFiles) {
+        $bridgeFiles | ForEach-Object { Write-Host "   ✓ $_" -ForegroundColor Green }
+    } else {
+        Write-Host "   ⚠️  Warning: No Bridge binaries found" -ForegroundColor Yellow
     }
     Write-Host ""
 }

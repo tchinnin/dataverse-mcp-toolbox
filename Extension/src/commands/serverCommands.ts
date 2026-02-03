@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ServerManager } from '../services/ServerManager';
 import { DataverseMCPToolBoxRpcClient } from '../services/DataverseMCPToolBoxRpcClient';
 import { ServerInfoTreeProvider } from '../providers/ServerInfoTreeProvider';
-import { MCPConfigurationService } from '../services/MCPConfigurationService';
+import { McpServerDefinitionProvider } from '../providers/McpServerDefinitionProvider';
 
 /**
  * Register server management commands
@@ -13,7 +13,8 @@ export function registerServerCommands(
     serverManager: ServerManager,
     rpcClient: DataverseMCPToolBoxRpcClient,
     serverInfoProvider: ServerInfoTreeProvider,
-    mcpConfigService: MCPConfigurationService
+    mcpProvider: McpServerDefinitionProvider,
+    socketDir: string
 ): void {
 
     // Command: Upgrade server to latest version
@@ -24,12 +25,12 @@ export function registerServerCommands(
 
                 if (!versionInfo.updateAvailable) {
                     vscode.window.showInformationMessage(
-                        `MCP Server is already up to date (v${versionInfo.installedVersion || 'unknown'})`
+                        `MCP Server is already up to date (v${versionInfo.currentVersion || 'unknown'})`
                     );
                     return;
                 }
 
-                const currentVersion = versionInfo.installedVersion || 'unknown';
+                const currentVersion = versionInfo.currentVersion || 'unknown';
                 const latestVersion = versionInfo.latestVersion;
 
                 const selection = await vscode.window.showInformationMessage(
@@ -47,31 +48,32 @@ export function registerServerCommands(
                     title: `Upgrading MCP Server to v${latestVersion}...`,
                     cancellable: false
                 }, async (progress) => {
-                    progress.report({ message: 'Downloading...' });
+                    progress.report({ message: 'Shutting down server...' });
 
-                    // Disconnect current server
-                    await rpcClient.disconnect();
-
-                    // Upgrade server
+                    // Upgrade server (includes graceful shutdown)
+                    progress.report({ message: 'Downloading new version...' });
                     const newServerPath = await serverManager.upgradeServer();
 
-                    // Get plugin directory
-                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-
-                    // Re-register MCP server with new path
+                    // Notify MCP provider of configuration change
                     progress.report({ message: 'Updating MCP configuration...' });
-                    await mcpConfigService.updateServerPath(newServerPath, pluginDirectory);
-
-                    // Reconnect with new version
-                    progress.report({ message: 'Restarting server...' });
-                    await rpcClient.connect(newServerPath, pluginDirectory);
-
-                    vscode.window.showInformationMessage(
-                        `Successfully upgraded MCP Server to v${latestVersion}`
-                    );
+                    const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
+                    const pipeName = rpcClient.getPipeName();
+                    const bridgePath = getBridgePath(newServerPath);
+                    mcpProvider.updateConfiguration(bridgePath, pluginDirectory, pipeName, socketDir);
 
                     // Refresh server info view
                     await serverInfoProvider.updateVersionInfo();
+
+                    // Prompt to reload VS Code
+                    const reloadSelection = await vscode.window.showInformationMessage(
+                        `Successfully upgraded to MCP Server v${latestVersion}. Please reload VS Code to start the new version.`,
+                        'Reload Now',
+                        'Later'
+                    );
+
+                    if (reloadSelection === 'Reload Now') {
+                        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+                    }
                 });
             } catch (error) {
                 console.error('Failed to upgrade server:', error);
@@ -96,7 +98,7 @@ export function registerServerCommands(
                 
                 if (versionInfo.updateAvailable) {
                     const selection = await vscode.window.showInformationMessage(
-                        `Update available: v${versionInfo.latestVersion} (current: v${versionInfo.installedVersion})`,
+                        `Update available: v${versionInfo.latestVersion} (current: v${versionInfo.currentVersion})`,
                         'Upgrade Now',
                         'Later'
                     );
@@ -106,7 +108,7 @@ export function registerServerCommands(
                     }
                 } else {
                     vscode.window.showInformationMessage(
-                        `MCP Server is up to date (v${versionInfo.installedVersion || 'unknown'})`
+                        `MCP Server is up to date (v${versionInfo.currentVersion || 'unknown'})`
                     );
                 }
             } catch (error) {
@@ -381,53 +383,21 @@ export function registerServerCommands(
             }
         })
     );
+}
 
-    // Command: Open MCP configuration file
-    context.subscriptions.push(
-        vscode.commands.registerCommand('dataversemcptoolbox.openMcpConfiguration', () => {
-            try {
-                mcpConfigService.openMcpConfiguration();
-            } catch (error) {
-                console.error('Failed to open MCP configuration:', error);
-                vscode.window.showErrorMessage(`Failed to open MCP configuration: ${error}`);
-            }
-        })
-    );
-
-    // Command: Re-register MCP server (useful after manual config edits)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('dataversemcptoolbox.reregisterMcpServer', async () => {
-            try {
-                // Ensure server is installed and get its path
-                const serverPath = await serverManager.ensureServerInstalled();
-                const pluginDirectory = path.join(context.globalStoragePath, 'plugins');
-                await mcpConfigService.registerMcpServer(serverPath, pluginDirectory);
-            } catch (error) {
-                console.error('Failed to re-register MCP server:', error);
-                vscode.window.showErrorMessage(`Failed to re-register MCP server: ${error}`);
-            }
-        })
-    );
-
-    // Command: Unregister MCP server from VS Code configuration
-    context.subscriptions.push(
-        vscode.commands.registerCommand('dataversemcptoolbox.unregisterMcpServer', async () => {
-            try {
-                const confirmation = await vscode.window.showWarningMessage(
-                    'Are you sure you want to unregister the Dataverse MCP server from VS Code? You can re-register it later.',
-                    'Unregister',
-                    'Cancel'
-                );
-
-                if (confirmation !== 'Unregister') {
-                    return;
-                }
-
-                await mcpConfigService.unregisterMcpServer();
-            } catch (error) {
-                console.error('Failed to unregister MCP server:', error);
-                vscode.window.showErrorMessage(`Failed to unregister MCP server: ${error}`);
-            }
-        })
-    );
+/**
+ * Get the Bridge executable path from the server path
+ */
+function getBridgePath(serverPath: string): string {
+    const serverDir = path.dirname(serverPath);
+    const platform = process.platform;
+    
+    let bridgeName: string;
+    if (platform === 'win32') {
+        bridgeName = 'DataverseMCPToolBox.Bridge.exe';
+    } else {
+        bridgeName = 'DataverseMCPToolBox.Bridge';
+    }
+    
+    return path.join(serverDir, bridgeName);
 }

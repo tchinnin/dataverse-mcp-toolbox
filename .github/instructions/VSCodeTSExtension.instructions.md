@@ -7,7 +7,19 @@ applyTo: "Extension/**"
 ## Architecture de l'extension
 
 ### Vue d'ensemble
-L'extension VS Code agit comme un client JSON-RPC qui communique avec le serveur .NET via `child_process`. Elle fournit une UI pour gérer les connexions Dataverse et afficher les informations.
+L'extension VS Code agit comme interface utilisateur et spawne un **Core Server** (.NET) par instance. Elle communique avec ce serveur via un protocole inter-processus.
+
+### Architecture Sidecar
+- **Extension** : Spawn et gère le cycle de vie du Core Server
+- **Core Server** : Un processus par instance VS Code, gère l'état et les opérations Dataverse
+- **MCP Bridge** : Processus séparé spawné par Copilot, se connecte au même Core Server
+- **Isolation** : Chaque instance VS Code a son propre Core Server isolé
+- **Communication** : Protocole inter-processus (abstrait de l'implémentation spécifique)
+
+### Principe de séparation
+- L'Extension **ne connaît pas** les détails du protocole de communication
+- Utilise une couche d'abstraction (client RPC générique)
+- Peut être adapté à différents transports sans changer la logique métier
 
 ### Structure des dossiers
 ```
@@ -23,82 +35,10 @@ Extension/src/
   ├── providers/                # Tree view providers
   │   └── ConnectionsTreeDataProvider.ts
   └── services/                 # Services
-      ├── DataverseMCPToolBoxRpcClient.ts
+      ├── DataverseMCPToolBoxRpcClient.ts  # Client RPC
       ├── ConnectionStorageService.ts
       └── TokenStorageService.ts
 ```
-
-## Client JSON-RPC (DataverseMCPToolBoxRpcClient)
-
-### Principes de communication
-Le client TypeScript spawne le processus .NET et communique via stdio :
-
-```typescript
-this.process = cp.spawn(executablePath, [], {
-    stdio: ['pipe', 'pipe', 'pipe']
-});
-
-// stdout → JSON-RPC messages uniquement
-const reader = new StreamMessageReader(this.process.stdout, 'utf-8');
-const writer = new StreamMessageWriter(this.process.stdin, 'utf-8');
-this.connection = createMessageConnection(reader, writer);
-
-// stderr → Logs du serveur .NET
-this.process.stderr.on('data', (data) => {
-    console.error(`[.NET Server STDERR] ${data.toString()}`);
-});
-```
-
-### Règles critiques pour stdio
-⚠️ **ABSOLUMENT IMPÉRATIF** ⚠️
-- **stdout du process .NET** : Messages JSON-RPC uniquement
-- **stderr du process .NET** : Logs et traces
-- **console.error()** : Pour tous les logs côté extension
-- **console.log()** : Utiliser uniquement pour debug, jamais rediriger vers process.stdout
-
-### Gestion du cycle de vie du serveur
-
-#### Connexion
-```typescript
-async connect(extensionPath: string): Promise<void> {
-    // 1. Déterminer le chemin de l'exécutable selon l'OS
-    const executablePath = this.getDotNetExecutablePath(extensionPath);
-    
-    // 2. Spawner le processus
-    this.process = cp.spawn(executablePath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-    
-    // 3. Gérer les événements du processus
-    this.process.on('error', handleError);
-    this.process.on('exit', handleExit);
-    
-    // 4. Créer la connexion JSON-RPC avec UTF-8
-    const reader = new StreamMessageReader(this.process.stdout, 'utf-8');
-    const writer = new StreamMessageWriter(this.process.stdin, 'utf-8');
-    this.connection = createMessageConnection(reader, writer);
-    
-    // 5. Démarrer l'écoute
-    this.connection.listen();
-    
-    // 6. Attendre que le serveur soit prêt (délai raisonnable)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-}
-```
-
-#### Déconnexion
-```typescript
-async disconnect(): Promise<void> {
-    if (this.connection) {
-        this.connection.dispose();
-        this.connection = null;
-    }
-    
-    if (this.process) {
-        this.process.kill();
-        this.process = null;
-    }
-    
-    this.isConnected = false;
-}
 ```
 
 ### Méthodes RPC
@@ -543,6 +483,28 @@ export class WhoAmIPanel {
 
 ## Build et publication
 
+### Dépendances des binaires .NET
+
+L'extension référence le **package NuGet Runtime** plutôt que d'embarquer directement les binaires.
+
+#### Structure attendue
+```
+Extension/
+  server/
+    binaries/           # Binaires locaux pour debug (gitignored)
+      osx-arm64/
+      osx-x64/
+      win-x64/
+      linux-x64/
+```
+
+#### Auto-installation Runtime
+L'extension peut :
+1. Vérifier si les binaires sont présents localement (dev mode)
+2. Sinon, télécharger le package NuGet Runtime
+3. Extraire les binaires pour la plateforme courante
+4. Rendre exécutables (Unix: chmod +x)
+
 ### Build TypeScript
 ```bash
 npm run compile
@@ -553,6 +515,35 @@ Produit les fichiers JavaScript dans `out/`
 ### Watch mode (développement)
 ```bash
 npm run watch
+```
+
+### Développement local avec binaires .NET
+
+#### Workflow de développement
+1. Modifier code dans Core ou Bridge
+2. Lancer `./scripts/install-local.sh` (depuis racine)
+3. Les binaires sont copiés dans `Extension/server/binaries/`
+4. F5 dans VS Code pour debug
+
+#### Script install-local.sh
+```bash
+#!/bin/bash
+echo "Building and copying to local Extension for debugging..."
+
+# Build Core + Bridge
+./scripts/build-all.sh
+
+# Copier vers Extension
+mkdir -p Extension/server/binaries
+cp -r Core/publish/* Extension/server/binaries/
+cp -r Bridge/publish/* Extension/server/binaries/
+
+# Rendre exécutables sur Unix
+if [ "$(uname)" != "Windows_NT" ]; then
+    chmod +x Extension/server/binaries/*/DataverseMCPToolBox*
+fi
+
+echo "✅ Local binaries ready for debugging"
 ```
 
 ### Package VSIX
@@ -573,15 +564,63 @@ vsce login <publisher>
 vsce publish
 ```
 
+### Support multi-plateforme
+
+#### Détection de plateforme
+```typescript
+function getPlatformIdentifier(): string {
+    const platform = process.platform;
+    const arch = process.arch;
+    
+    if (platform === 'darwin') {
+        return arch === 'arm64' ? 'osx-arm64' : 'osx-x64';
+    } else if (platform === 'win32') {
+        return 'win-x64';
+    } else if (platform === 'linux') {
+        return 'linux-x64';
+    }
+    throw new Error(`Unsupported platform: ${platform}`);
+}
+```
+
+#### Sélection et permissions binaires
+```typescript
+import { chmod } from 'fs/promises';
+import * as path from 'path';
+
+async function prepareBinary(extensionPath: string): Promise<string> {
+    const platformId = getPlatformIdentifier();
+    const binaryName = process.platform === 'win32' 
+        ? 'DataverseMCPToolBox.exe'
+        : 'DataverseMCPToolBox';
+    
+    const binaryPath = path.join(
+        extensionPath,
+        'server',
+        'binaries',
+        platformId,
+        binaryName
+    );
+    
+    // Rendre exécutable sur Unix
+    if (process.platform !== 'win32') {
+        await chmod(binaryPath, 0o755);
+    }
+    
+    return binaryPath;
+}
+```
+
 ### Checklist avant publication
 - [ ] Version mise à jour dans package.json
-- [ ] Tous les binaires .NET inclus dans le package
-- [ ] Testé sur Windows, macOS (Intel et ARM), Linux
+- [ ] Référence au bon package NuGet Runtime
+- [ ] Testé sur Windows et macOS (au minimum)
 - [ ] README.md à jour
 - [ ] CHANGELOG.md à jour
 - [ ] Pas d'erreurs TypeScript
-- [ ] Pas de console.log() inutiles
-- [ ] Tests fonctionnels passent
+- [ ] Pas de console.log() inutiles (utiliser console.error())
+- [ ] Tests fonctionnels passés
+- [ ] Vérifier taille du VSIX (< 10MB idéalement)
 
 ## Débogage
 

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained>true</SelfContained>
+    <AssemblyName>DataverseMCPToolBox.Bridge</AssemblyName>
+    
+    <!-- Disable threading analyzer warnings for Console.Error logging -->
+    <NoWarn>$(NoWarn);VSTHRD103;VSTHRD002</NoWarn>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>DataverseMCPToolBox.Bridge</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>Théophile CHIN-NIN</Authors>
+    <Company>tchinnin</Company>
+    <Description>MCP Bridge for Dataverse MCP ToolBox. Forwards STDIO to Named Pipes for GitHub Copilot integration.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</PackageProjectUrl>
+    <PackageTags>dataverse;mcp;bridge;model-context-protocol;power-platform</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference to Core for shared Abstractions -->
+    <ProjectReference Include="..\Core\DataverseMCPToolBox.csproj">
+      <!-- Only include Abstractions, not the executable -->
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc for JSON-RPC communication -->
+    <PackageReference Include="StreamJsonRpc" Version="2.19.27" />
+    
+    <!-- Newtonsoft.Json for JSON serialization with camelCase -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>

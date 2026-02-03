@@ -18,6 +18,22 @@ export function registerCommands(
     
     // Command: Add new connection
     const addConnectionCmd = vscode.commands.registerCommand('dataversemcptoolbox.addConnection', async () => {
+        // Check if server is connected
+        if (!rpcClient.isServerConnected()) {
+            const selection = await vscode.window.showErrorMessage(
+                'Cannot add connection: Dataverse MCP Server is not running. The server must be started by GitHub Copilot via MCP configuration.',
+                'Reload VS Code',
+                'Open MCP Config'
+            );
+            
+            if (selection === 'Reload VS Code') {
+                await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            } else if (selection === 'Open MCP Config') {
+                await vscode.commands.executeCommand('dataversemcptoolbox.openMcpConfiguration');
+            }
+            return;
+        }
+
         // Prompt for connection name
         const name = await vscode.window.showInputBox({
             prompt: 'Enter a name for the connection',
@@ -75,12 +91,12 @@ export function registerCommands(
 
                 progress.report({ message: 'Saving connection...' });
 
-                // Save connection locally with RPC connection ID
-                const connection = await storageService.addConnection(name.trim(), url.trim());
-                
-                // Store the RPC connection ID in the connection metadata
-                connection.metadata = { rpcConnectionId: result.connectionId };
-                await storageService.updateConnection(connection);
+                // Save connection locally using server-generated ID
+                const connection = await storageService.addConnection(
+                    result.connectionId!, 
+                    name.trim(), 
+                    url.trim()
+                );
 
                 // Store tokens securely
                 if (result.accessToken) {
@@ -189,6 +205,7 @@ export function registerCommands(
                             
                             try {
                                 result = await rpcClient.createConnection({
+                                    connectionId: item.connection.id,
                                     environmentUrl: item.connection.url,
                                     connectionName: item.connection.name,
                                     accessToken: storedTokens.accessToken,
@@ -205,6 +222,7 @@ export function registerCommands(
                                 console.log(`Stored token rejected for ${item.connection.name}, re-authenticating...`);
                                 progress.report({ message: 'Token expired, re-authenticating...' });
                                 result = await rpcClient.createConnection({
+                                    connectionId: item.connection.id,
                                     environmentUrl: item.connection.url,
                                     connectionName: item.connection.name
                                 });
@@ -216,6 +234,7 @@ export function registerCommands(
                             
                             try {
                                 result = await rpcClient.createConnection({
+                                    connectionId: item.connection.id,
                                     environmentUrl: item.connection.url,
                                     connectionName: item.connection.name,
                                     accessToken: storedTokens.accessToken,
@@ -232,6 +251,7 @@ export function registerCommands(
                                 console.log(`Token refresh failed for ${item.connection.name}, requiring interactive authentication...`);
                                 progress.report({ message: 'Re-authenticating interactively...' });
                                 result = await rpcClient.createConnection({
+                                    connectionId: item.connection.id,
                                     environmentUrl: item.connection.url,
                                     connectionName: item.connection.name
                                 });
@@ -242,6 +262,7 @@ export function registerCommands(
                         progress.report({ message: 'No stored credentials, authenticating...' });
                         console.log(`No stored tokens for ${item.connection.name}, requiring authentication...`);
                         result = await rpcClient.createConnection({
+                            connectionId: item.connection.id,  // Pass existing connection ID
                             environmentUrl: item.connection.url,
                             connectionName: item.connection.name
                         });
@@ -250,10 +271,6 @@ export function registerCommands(
                     if (!result.success) {
                         throw new Error(result.errorMessage || 'Failed to connect');
                     }
-
-                    // Update connection with new RPC connection ID
-                    item.connection.metadata = { rpcConnectionId: result.connectionId };
-                    await storageService.updateConnection(item.connection);
 
                     // Store new tokens securely
                     if (result.accessToken) {
@@ -270,16 +287,11 @@ export function registerCommands(
                     console.log(`${item.connection.name} is now the active connection`);
                     
                     // Notify RPC server of active connection for MCP
-                    // IMPORTANT: Use RPC connection ID (GUID from server), not local storage ID
-                    if (result.connectionId) {
-                        try {
-                            await rpcClient.setActiveConnection(result.connectionId);
-                            console.error(`[Commands] Active connection set in MCP server: ${result.connectionId}`);
-                        } catch (error) {
-                            console.error('[Commands] Failed to set active connection in MCP server:', error);
-                        }
-                    } else {
-                        console.error('[Commands] No RPC connection ID available, cannot set active connection in MCP server');
+                    try {
+                        await rpcClient.setActiveConnection(item.connection.id);
+                        console.error(`[Commands] Active connection set in MCP server: ${item.connection.id}`);
+                    } catch (error) {
+                        console.error('[Commands] Failed to set active connection in MCP server:', error);
                     }
                 });
 
