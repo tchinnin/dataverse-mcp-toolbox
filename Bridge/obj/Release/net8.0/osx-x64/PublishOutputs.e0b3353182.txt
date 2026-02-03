@@ -1,6 +1,0 @@
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.Bridge.pdb
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.runtimeconfig.json
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.pdb
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.Extensibility.pdb
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.Extensibility.xml
-/Users/tchinnin/git/TCH/dataverse-mcp-toolbox/Bridge/publish/osx-x64/DataverseMCPToolBox.Bridge
