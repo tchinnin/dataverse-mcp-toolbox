@@ -6,12 +6,19 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>false</PublishTrimmed>
+    <PublishTrimmed>true</PublishTrimmed>
     <SelfContained>true</SelfContained>
     <AssemblyName>DataverseMCPToolBox.Bridge</AssemblyName>
+    <TrimMode>link</TrimMode>
     
-    <!-- Disable threading analyzer warnings for Console.Error logging -->
-    <NoWarn>$(NoWarn);VSTHRD103;VSTHRD002</NoWarn>
+    <!-- Optimizations for Package Size -->
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    
+    <!-- Disable threading analyzer warnings and suppress trimming warnings -->
+    <NoWarn>$(NoWarn);VSTHRD103;VSTHRD002;IL2026;IL2104</NoWarn>
     
     <!-- NuGet Package Metadata -->
     <PackageId>DataverseMCPToolBox.Bridge</PackageId>

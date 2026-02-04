@@ -32,7 +32,6 @@ foreach ($Platform in $Platforms) {
         -r $Platform `
         --self-contained true `
         -p:PublishSingleFile=true `
-        -p:PublishTrimmed=false `
         -o $OutputDir
     
     if ($LASTEXITCODE -eq 0) {
@@ -62,7 +61,6 @@ foreach ($Platform in $Platforms) {
         -r $Platform `
         --self-contained true `
         -p:PublishSingleFile=true `
-        -p:PublishTrimmed=false `
         -o $OutputDir
     
     if ($LASTEXITCODE -eq 0) {

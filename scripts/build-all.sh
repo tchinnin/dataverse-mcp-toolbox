@@ -36,7 +36,6 @@ for PLATFORM in "${PLATFORMS[@]}"; do
         -r "$PLATFORM" \
         --self-contained true \
         -p:PublishSingleFile=true \
-        -p:PublishTrimmed=false \
         -o "$OUTPUT_DIR"
     
     if [ $? -eq 0 ]; then
@@ -64,7 +63,6 @@ for PLATFORM in "${PLATFORMS[@]}"; do
         -r "$PLATFORM" \
         --self-contained true \
         -p:PublishSingleFile=true \
-        -p:PublishTrimmed=false \
         -o "$OUTPUT_DIR"
     
     if [ $? -eq 0 ]; then

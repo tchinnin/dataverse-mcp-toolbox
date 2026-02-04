@@ -6,9 +6,18 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>false</PublishTrimmed>
+    <PublishTrimmed>true</PublishTrimmed>
     <SelfContained>true</SelfContained>
-    <NoWarn>VSTHRD103</NoWarn>
+    <TrimMode>link</TrimMode>
+    
+    <!-- Optimizations for Package Size -->
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    
+    <!-- Suppress trimming warnings (IL2026: reflection in Dataverse SDK, IL2104: assembly load) -->
+    <NoWarn>VSTHRD103;IL2026;IL2104</NoWarn>
     
     <!-- Assembly Version (must be numeric with parts <= 65535) -->
     <AssemblyVersion>0.2.2602.4</AssemblyVersion>
@@ -48,20 +57,20 @@
   </ItemGroup>
 
   <!-- Include platform-specific binaries in NuGet package -->
-  <!-- Core Server binaries -->
+  <!-- Core Server binaries (executables only, exclude .pdb and .xml) -->
   <ItemGroup>
-    <None Include="publish/osx-arm64/**" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
-    <None Include="publish/osx-x64/**" Pack="true" PackagePath="runtimes/osx-x64/native/" />
-    <None Include="publish/win-x64/**" Pack="true" PackagePath="runtimes/win-x64/native/" />
-    <None Include="publish/linux-x64/**" Pack="true" PackagePath="runtimes/linux-x64/native/" />
+    <None Include="publish/osx-arm64/DataverseMCPToolBox" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
+    <None Include="publish/osx-x64/DataverseMCPToolBox" Pack="true" PackagePath="runtimes/osx-x64/native/" />
+    <None Include="publish/win-x64/DataverseMCPToolBox.exe" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="publish/linux-x64/DataverseMCPToolBox" Pack="true" PackagePath="runtimes/linux-x64/native/" />
   </ItemGroup>
 
-  <!-- Bridge binaries (from sibling project) -->
+  <!-- Bridge binaries (executables only, exclude .pdb and .xml) -->
   <ItemGroup>
-    <None Include="../Bridge/publish/osx-arm64/**" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
-    <None Include="../Bridge/publish/osx-x64/**" Pack="true" PackagePath="runtimes/osx-x64/native/" />
-    <None Include="../Bridge/publish/win-x64/**" Pack="true" PackagePath="runtimes/win-x64/native/" />
-    <None Include="../Bridge/publish/linux-x64/**" Pack="true" PackagePath="runtimes/linux-x64/native/" />
+    <None Include="../Bridge/publish/osx-arm64/DataverseMCPToolBox.Bridge" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
+    <None Include="../Bridge/publish/osx-x64/DataverseMCPToolBox.Bridge" Pack="true" PackagePath="runtimes/osx-x64/native/" />
+    <None Include="../Bridge/publish/win-x64/DataverseMCPToolBox.Bridge.exe" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="../Bridge/publish/linux-x64/DataverseMCPToolBox.Bridge" Pack="true" PackagePath="runtimes/linux-x64/native/" />
   </ItemGroup>
 
 </Project>
