@@ -1,19 +1,43 @@
 # DataverseMCPToolBox.Extensibility
 
-SDK for building MCP (Model Context Protocol) plugins that extend the DataverseMCPToolBox server with custom Dataverse operations.
+[![NuGet](https://img.shields.io/nuget/v/DataverseMCPToolBox.Extensibility.svg)](https://www.nuget.org/packages/DataverseMCPToolBox.Extensibility/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+Extensibility SDK for building MCP (Model Context Protocol) plugins that extend the DataverseMCPToolBox with custom Dataverse operations.
 
 ## Overview
 
-The **DataverseMCPToolBox.Extensibility** package provides interfaces, base classes, attributes, and utilities for developing plugins that expose MCP tools for Dataverse operations. Plugins are distributed as NuGet packages and dynamically loaded by the DataverseMCPToolBox server at runtime.
+The **DataverseMCPToolBox.Extensibility** package provides a comprehensive framework for developing plugins that expose MCP-compliant tools for Dataverse operations. Plugins are:
+
+- Distributed as **NuGet packages** for easy installation and versioning
+- **Dynamically loaded** by the Core Server at runtime
+- **Isolated** with proper lifecycle management
+- **Type-safe** with automatic JSON schema generation
+- **MCP-compliant** with standardized tool interfaces
 
 ## Key Features
 
-- **Plugin Architecture**: Implement `IPlugin` interface for lifecycle management
-- **Automatic Tool Discovery**: Decorate methods with `[McpTool]` for automatic registration
-- **Strongly-Typed Tools**: Use `McpToolBase<TInput, TOutput>` for type-safe tool implementations
+- **Plugin Architecture**: Implement `IPlugin` interface for complete lifecycle management (initialization and disposal)
+- **Automatic Tool Discovery**: Two approaches:
+  - Attribute-based: Decorate methods with `[McpTool]` for automatic registration
+  - Manual registration: Override `GetTools()` for explicit tool registration
+- **Strongly-Typed Tools**: Use `McpToolBase<TInput, TOutput>` for type-safe implementations with:
+  - Automatic parameter deserialization (camelCase JSON → PascalCase C#)
+  - Input validation against JSON Schema
+  - Exception handling and error formatting
 - **JSON Schema Generation**: Automatic schema generation from C# types using NJsonSchema
-- **Dataverse Integration**: Direct access to authenticated `IOrganizationServiceAsync2` instances
-- **MCP Compliance**: Kebab-case naming enforcement and standard error handling
+- **Dataverse Integration**: Direct access to:
+  - Authenticated `IOrganizationServiceAsync2` service client
+  - Connection metadata (URL, connection ID)
+  - Cancellation tokens for async operations
+- **MCP Compliance**: 
+  - Kebab-case naming enforcement (e.g., `create-record`, `list-entities`)
+  - Standardized error codes and messages
+  - Structured error details
+- **Development Experience**:
+  - IntelliSense support with XML documentation
+  - Helper utilities (SchemaGenerator)
+  - Comprehensive examples and samples
 
 ## Quick Start
 
@@ -192,45 +216,172 @@ var assemblies = LoadPluginAssemblies();
 var manifests = PluginManifest.DiscoverPlugins(assemblies);
 ```
 
+## Installation
+
+### Via NuGet Package Manager
+```bash
+dotnet add package DataverseMCPToolBox.Extensibility
+```
+
+### Via .NET CLI
+```bash
+dotnet nuget install DataverseMCPToolBox.Extensibility
+```
+
+### Package Manager Console (Visual Studio)
+```powershell
+Install-Package DataverseMCPToolBox.Extensibility
+```
+
+## Requirements
+
+- **.NET 8.0** or later
+- **C# 12** or later (for latest language features)
+- **NuGet Package Manager**
+
 ## Dependencies
 
-- **.NET 8.0** - Target framework
-- **Microsoft.PowerPlatform.Dataverse.Client** - Dataverse SDK
-- **NJsonSchema** - JSON Schema generation and validation
-- **Newtonsoft.Json** - JSON serialization with camelCase support
+This SDK automatically includes:
+- **Microsoft.PowerPlatform.Dataverse.Client** (v1.1.32) - Official Dataverse SDK
+- **NJsonSchema** (v11.0.2) - JSON Schema generation and validation
+- **Newtonsoft.Json** (v13.0.3) - JSON serialization with camelCase support
 
-## Distribution
+## Plugin Distribution
 
-1. Build plugin project targeting `net8.0`
-2. Package as NuGet: `dotnet pack`
-3. Publish to NuGet.org or private feed
-4. Users install via: `dotnet add package YourPluginName`
-5. DataverseMCPToolBox server auto-discovers plugins in configured directories
+### Building and Packaging
+
+1. **Create your plugin project** targeting `net8.0`:
+   ```bash
+   dotnet new classlib -n MyDataversePlugin -f net8.0
+   cd MyDataversePlugin
+   dotnet add package DataverseMCPToolBox.Extensibility
+   ```
+
+2. **Implement your plugin** (see Quick Start examples below)
+
+3. **Build in Release mode**:
+   ```bash
+   dotnet build --configuration Release
+   ```
+
+4. **Package as NuGet**:
+   ```bash
+   dotnet pack --configuration Release
+   ```
+
+5. **Publish your plugin**:
+   - **Public**: Publish to [NuGet.org](https://www.nuget.org/)
+   - **Private**: Use Azure Artifacts, GitHub Packages, or private NuGet feed
+   - **Local**: Place `.nupkg` file in plugin directory
+
+### Plugin Installation (End Users)
+
+Users install your plugin via the VS Code Extension:
+1. Open Dataverse MCP Toolbox panel
+2. Navigate to Plugins section
+3. Click "Install Plugin"
+4. Enter package ID: `YourPluginName`
+5. Plugin is automatically downloaded, extracted, and loaded
 
 ## Example Plugin Structure
 
 ```
 MyDataversePlugin/
-├── MyDataversePlugin.csproj
-├── MyPlugin.cs (PluginBase implementation)
+├── MyDataversePlugin.csproj      # Project file with package metadata
+├── README.md                      # Plugin documentation (included in NuGet)
+├── MyPlugin.cs                    # Main plugin class (PluginBase implementation)
 ├── Tools/
-│   ├── ListEntitiesT ool.cs
+│   ├── ListEntitiesTool.cs       # Individual tool implementations
 │   ├── CreateRecordTool.cs
 │   └── QueryDataTool.cs
 ├── Models/
-│   ├── ListEntitiesInput.cs
-│   └── CreateRecordInput.cs
-└── README.md
+│   ├── ListEntitiesInput.cs      # Input DTOs (PascalCase properties)
+│   ├── ListEntitiesOutput.cs     # Output DTOs
+│   ├── CreateRecordInput.cs
+│   └── CreateRecordOutput.cs
+└── Helpers/                       # Optional utility classes
+    └── DataverseHelper.cs
 ```
+
+## Best Practices
+
+- ✅ **Use kebab-case** for all tool names (enforced by `McpToolBase`)
+- ✅ **PascalCase** for C# properties, auto-converted to **camelCase** in JSON
+- ✅ **Implement IDisposable** properly if managing resources
+- ✅ **Use CancellationToken** for all async operations
+- ✅ **Throw ToolExecutionException** for structured errors
+- ✅ **Log to stderr** only, never to stdout
+- ✅ **Include README.md** in your NuGet package
+- ✅ **Version your plugin** semantically (e.g., 1.0.0, 1.1.0, 2.0.0)
+- ✅ **Document parameters** with XML comments for IntelliSense
+
+## Troubleshooting
+
+### Common Issues
+
+**"Tool name must be in kebab-case format"**
+- Ensure tool names use hyphens: `list-entities`, not `ListEntities` or `list_entities`
+
+**"Cannot load plugin assembly"**
+- Verify your plugin targets `net8.0`
+- Check all dependencies are compatible
+
+**"JSON Schema validation failed"**
+- Ensure input models have public getters/setters
+- Check property types are JSON-serializable
+
+**"Dataverse operation failed"**
+- Verify connection is active before executing operations
+- Check entity logical names and attribute names
+- Review Dataverse SDK error messages
+
+## Version History
+
+### 0.1.0-alpha (Current)
+- Initial release of Extensibility SDK
+- Core interfaces: `IPlugin`, `IMcpTool`, `IDataverseContext`
+- Base classes: `PluginBase`, `McpToolBase<TInput, TOutput>`
+- Attributes: `[McpPlugin]`, `[McpTool]`
+- JSON Schema generation with NJsonSchema
+- Automatic camelCase/PascalCase conversion
+- Standard error handling with `ToolExecutionException`
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/LICENSE) file for details.
 
-## Contributing
+## Documentation
 
-Contributions welcome! Submit issues and pull requests to the [DataverseMCPToolBox repository](https://github.com/tchinnin/dataverse-mcp-toolbox).
+Comprehensive guides available:
+- [Creating Plugins](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/14-Creating-Plugins.md)
+- [Plugin Architecture](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/15-Plugin-Architecture.md)
+- [API Reference](https://github.com/tchinnin/dataverse-mcp-toolbox/tree/main/Docs)
+
+## Repository
+
+**GitHub:** [https://github.com/tchinnin/dataverse-mcp-toolbox](https://github.com/tchinnin/dataverse-mcp-toolbox)
 
 ## Support
 
-For questions and support, open an issue on the GitHub repository.
+For questions, issues, or feature requests:
+- **Issues:** [GitHub Issues](https://github.com/tchinnin/dataverse-mcp-toolbox/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/tchinnin/dataverse-mcp-toolbox/discussions)
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request with clear description
+
+See [CONTRIBUTING.md](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/CONTRIBUTING.md) for guidelines.
+
+## Related Packages
+
+- **[DataverseMCPToolBox.Runtime](https://www.nuget.org/packages/DataverseMCPToolBox.Runtime/)** - Core Server and MCP Bridge binaries
+- **[DataverseMCPToolBox.WhoAmI](https://www.nuget.org/packages/DataverseMCPToolBox.WhoAmI/)** - Sample plugin implementation
+
+## Author
+
+**Théophile CHIN-NIN**
+- GitHub: [@tchinnin](https://github.com/tchinnin)

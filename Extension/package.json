@@ -2,7 +2,7 @@
   "name": "dataverse-mcp-toolbox",
   "displayName": "Dataverse MCP ToolBox",
   "description": "Manage Dataverse connections and expose MCP tools for GitHub Copilot",
-  "version": "0.0.1",
+  "version": "0.2.260204",
   "publisher": "tchinnin",
   "engines": {
     "vscode": "^1.102.0"
