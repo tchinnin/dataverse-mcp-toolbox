@@ -20,17 +20,9 @@
     <!-- Disable threading analyzer warnings and suppress trimming warnings -->
     <NoWarn>$(NoWarn);VSTHRD103;VSTHRD002;IL2026;IL2104</NoWarn>
     
-    <!-- NuGet Package Metadata -->
-    <PackageId>DataverseMCPToolBox.Bridge</PackageId>
-    <Version>0.1.0-alpha</Version>
-    <Authors>Théophile CHIN-NIN</Authors>
-    <Company>tchinnin</Company>
-    <Description>MCP Bridge for Dataverse MCP ToolBox. Forwards STDIO to Named Pipes for GitHub Copilot integration.</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/tchinnin/dataverse-mcp-toolbox</PackageProjectUrl>
-    <PackageTags>dataverse;mcp;bridge;model-context-protocol;power-platform</PackageTags>
+    <!-- Assembly Version (Bridge is bundled into DataverseMCPToolBox.Runtime package, not published separately) -->
+    <AssemblyVersion>0.1.2602.5</AssemblyVersion>
+    <FileVersion>0.1.2602.5</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

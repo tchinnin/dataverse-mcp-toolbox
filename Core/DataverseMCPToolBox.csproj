@@ -20,12 +20,12 @@
     <NoWarn>VSTHRD103;IL2026;IL2104</NoWarn>
     
     <!-- Assembly Version (must be numeric with parts <= 65535) -->
-    <AssemblyVersion>0.2.2602.4</AssemblyVersion>
-    <FileVersion>0.2.2602.4</FileVersion>
+    <AssemblyVersion>0.2.2602.5</AssemblyVersion>
+    <FileVersion>0.2.2602.5</FileVersion>
     
     <!-- NuGet Package Metadata -->
     <PackageId>DataverseMCPToolBox.Runtime</PackageId>
-    <Version>0.2.260204-beta</Version>
+    <Version>0.2.260204-beta.2</Version>
     <Authors>Théophile CHIN-NIN</Authors>
     <Company>tchinnin</Company>
     <Description>Runtime package for Dataverse MCP Toolbox. Contains Core Server and Bridge binaries for all supported platforms (macOS, Windows, Linux).</Description>
@@ -48,7 +48,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Extensibility\DataverseMCPToolBox.Extensibility.csproj" />
+    <!-- Production: Use NuGet package reference -->
+    <PackageReference Include="DataverseMCPToolBox.Extensibility" Version="0.2.260204-beta" />
+    <!-- Local development: Uncomment line below and comment PackageReference above -->
+    <!-- <ProjectReference Include="..\Extensibility\DataverseMCPToolBox.Extensibility.csproj" /> -->
   </ItemGroup>
 
   <!-- Include README in NuGet package -->
