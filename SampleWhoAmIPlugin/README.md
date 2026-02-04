@@ -1,65 +1,131 @@
-# WhoAmI Plugin for DataverseMCPToolBox
+# DataverseMCPToolBox.WhoAmI
 
-A plugin demonstrating the **DataverseMCPToolBox.Extensibility** framework by implementing a "Who Am I" tool for Dataverse.
+[![NuGet](https://img.shields.io/nuget/v/DataverseMCPToolBox.WhoAmI.svg)](https://www.nuget.org/packages/DataverseMCPToolBox.WhoAmI/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+Sample plugin demonstrating the **DataverseMCPToolBox.Extensibility** framework by implementing a "Who Am I" tool for Dataverse.
 
 ## Overview
 
-This plugin provides a single MCP tool (`who-am-i`) that retrieves information about the currently connected Dataverse user, including:
-- User display name
-- User ID (GUID)
-- Business Unit ID (GUID)
-- Organization ID (GUID)
-- Environment URL
+This plugin provides a production-ready MCP tool (`who-am-i`) that retrieves comprehensive information about the currently authenticated Dataverse user:
+
+- ✅ **User Display Name** - Full name of the authenticated user
+- ✅ **User ID** - Unique identifier (GUID) of the user
+- ✅ **Business Unit ID** - User's business unit GUID
+- ✅ **Organization ID** - Dataverse organization GUID
+- ✅ **Environment URL** - Full Dataverse environment URL
+- ✅ **Confirmation Message** - Human-readable success message
 
 ## Purpose
 
-This sample demonstrates:
-- ✅ How to create a plugin using the Extensibility framework
-- ✅ Strongly-typed tool implementation with `McpToolBase<TInput, TOutput>`
-- ✅ Proper use of the `[McpPlugin]` attribute
-- ✅ Error handling with `ToolExecutionException`
-- ✅ Logging to stderr (not stdout)
-- ✅ Kebab-case tool naming convention
-- ✅ Async-only operations with cancellation support
-- ✅ Dataverse SDK integration via `IDataverseContext`
+This sample serves as a **reference implementation** demonstrating best practices for plugin development:
+
+### Architecture Patterns
+- ✅ Plugin class structure with `[McpPlugin]` attribute
+- ✅ Strongly-typed tool implementation using `McpToolBase<TInput, TOutput>`
+- ✅ Separation of concerns (plugin vs. tool classes)
+- ✅ Proper lifecycle management with `InitializeAsync()` and `Dispose()`
+
+### Dataverse Integration
+- ✅ `IDataverseContext` usage for accessing service client
+- ✅ WhoAmIRequest execution (SDK operation)
+- ✅ Entity retrieval with QueryExpression
+- ✅ Safe attribute value extraction with fallback
+
+### MCP Compliance
+- ✅ Kebab-case tool naming (`who-am-i`)
+- ✅ JSON Schema generation for parameters (none required in this case)
+- ✅ PascalCase C# properties → camelCase JSON output
+- ✅ Structured error handling with `ToolExecutionException`
+
+### Best Practices
+- ✅ Comprehensive error handling with fallback logic
+- ✅ Async-only operations with `CancellationToken` support
+- ✅ Logging to stderr exclusively (never stdout)
+- ✅ Human-readable success messages
+- ✅ Detailed XML documentation for IntelliSense
 
 ## Installation
 
-### From Source
+### Option 1: From NuGet (Recommended)
 
-1. Build the project:
+Install directly from NuGet.org:
+
+```bash
+# .NET CLI
+dotnet add package DataverseMCPToolBox.WhoAmI
+
+# Package Manager Console (Visual Studio)
+Install-Package DataverseMCPToolBox.WhoAmI
+```
+
+### Option 2: Via VS Code Extension
+
+1. Open **Dataverse MCP Toolbox** panel in VS Code
+2. Navigate to **Plugins** section
+3. Click **Install Plugin**
+4. Enter package ID: `DataverseMCPToolBox.WhoAmI`
+5. Click **Install**
+
+The plugin will be automatically downloaded and loaded.
+
+### Option 3: Build from Source
+
+1. **Clone the repository:**
    ```bash
-   cd SampleWhoAmIPlugin
+   git clone https://github.com/tchinnin/dataverse-mcp-toolbox.git
+   cd dataverse-mcp-toolbox/SampleWhoAmIPlugin
+   ```
+
+2. **Build the project:**
+   ```bash
    dotnet build --configuration Release
    ```
 
-2. Pack as NuGet:
+3. **Package as NuGet:**
    ```bash
-   dotnet pack --configuration Release
+   dotnet pack --configuration Release -o ./nupkg
    ```
 
-3. The package will be created at:
+4. **Locate the package:**
    ```
-   bin/Release/DataverseMCPToolBox.WhoAmI.1.0.0-alpha.nupkg
+   nupkg/DataverseMCPToolBox.WhoAmI.1.1.0-alpha.nupkg
    ```
 
-### From NuGet (if published)
-
-```bash
-dotnet add package DataverseMCPToolBox.WhoAmI
-```
+5. **Install locally:**
+   - Copy `.nupkg` file to your plugin directory
+   - Or install via: `dotnet nuget add source ./nupkg -n LocalSource`
 
 ## Usage
 
-Once the plugin is loaded by the DataverseMCPToolBox server, it exposes the following tool:
+### Prerequisites
+
+1. **Dataverse MCP Toolbox** Core Server must be running
+2. An **active Dataverse connection** must be established
+3. The **plugin must be loaded** by the Core Server
 
 ### Tool: `who-am-i`
 
 **Description:** Retrieves information about the currently connected Dataverse user
 
-**Parameters:** None required
+**Tool Name:** `who-am-i` (kebab-case, MCP-compliant)
 
-**Returns:**
+**Parameters:** None required (empty object `{}` or `null`)
+
+**Returns:** `WhoAmIOutput` object with the following properties:
+
+```typescript
+interface WhoAmIOutput {
+  userDisplayName: string;   // Full name of the user
+  userId: string;            // User GUID
+  businessUnitId: string;    // Business unit GUID
+  organizationId: string;    // Organization GUID
+  environmentUrl: string;    // Dataverse environment URL
+  message: string;           // Confirmation message
+}
+```
+
+**Example Response:**
 ```json
 {
   "userDisplayName": "John Doe",
@@ -71,7 +137,10 @@ Once the plugin is loaded by the DataverseMCPToolBox server, it exposes the foll
 }
 ```
 
-**Example MCP Request:**
+### Invocation Examples
+
+#### Via MCP Protocol (JSON-RPC)
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -84,15 +153,31 @@ Once the plugin is loaded by the DataverseMCPToolBox server, it exposes the foll
 }
 ```
 
+#### Via GitHub Copilot (Natural Language)
+
+In VS Code with GitHub Copilot:
+```
+@workspace Use the who-am-i tool to get the current user information
+```
+
+#### Via VS Code Extension UI
+
+1. Open **Dataverse MCP Toolbox** panel
+2. Navigate to **Tools** section
+3. Find `who-am-i` tool
+4. Click **Execute**
+5. View results in output panel
+
 ## Code Structure
 
 ```
 SampleWhoAmIPlugin/
-├── WhoAmI.csproj               # Project file with NuGet dependencies
+├── WhoAmI.csproj               # Project file with package metadata
 ├── WhoAmIPlugin.cs             # Main plugin class and tool implementation
 ├── Models/
-│   └── WhoAmIOutput.cs          # Output model for the tool
-└── README.md                     # This file
+│   └── WhoAmIOutput.cs         # Output DTO with PascalCase properties
+├── README.md                   # This documentation (included in NuGet)
+└── nupkg/                      # Generated NuGet packages (not in repo)
 ```
 
 ## Key Components
@@ -151,61 +236,221 @@ public class WhoAmIOutput
 
 ## Technical Details
 
-### Dataverse Operations Used
+### Dataverse SDK Operations
 
-1. **WhoAmIRequest**: Retrieves user ID, business unit ID, and organization ID
-2. **RetrieveAsync**: Fetches the user's display name from the `systemuser` table
+The plugin uses two primary Dataverse operations:
 
-### Error Handling
+#### 1. WhoAmIRequest
+```csharp
+var whoAmIRequest = new WhoAmIRequest();
+var whoAmIResponse = (WhoAmIResponse)await context.ServiceClient
+    .ExecuteAsync(whoAmIRequest, cancellationToken);
+```
+Retrieves:
+- `UserId` - Unique identifier of the authenticated user
+- `BusinessUnitId` - User's business unit
+- `OrganizationId` - Dataverse organization
 
-- Structured errors using `ToolExecutionException`
-- Graceful fallback if display name retrieval fails
-- Proper cancellation support
-- All errors logged to stderr
+#### 2. RetrieveAsync
+```csharp
+var user = await context.ServiceClient.RetrieveAsync(
+    "systemuser",
+    whoAmIResponse.UserId,
+    new ColumnSet("fullname"),
+    cancellationToken);
+```
+Fetches:
+- `fullname` attribute from `systemuser` table
+- Fallback to "Unknown User" if retrieval fails
+
+### Error Handling Strategy
+
+1. **Structured Exceptions**: All errors thrown as `ToolExecutionException` with:
+   - Error code (e.g., `DATAVERSE_ERROR`)
+   - User-friendly message
+   - Additional context (details object)
+
+2. **Graceful Degradation**: If display name retrieval fails:
+   - Operation continues
+   - Returns "Unknown User" as fallback
+   - Logs warning to stderr
+
+3. **Cancellation Support**: All async operations respect `CancellationToken`
+
+4. **Logging**: All errors and warnings logged to stderr only
 
 ### Conventions Followed
 
-- ✅ Tool name: `who-am-i` (kebab-case)
-- ✅ Async operations with `CancellationToken`
-- ✅ Logging to stderr only (`Console.Error.WriteLine`)
-- ✅ PascalCase properties in C# → camelCase in JSON
-- ✅ Proper disposal and lifecycle management
+✅ **Naming:**
+- Tool name: `who-am-i` (kebab-case, enforced)
+- C# properties: PascalCase (`UserDisplayName`)
+- JSON output: camelCase (`userDisplayName`)
+
+✅ **Async/Await:**
+- All operations async with `Task<T>`
+- CancellationToken passed to all SDK calls
+- No blocking `.Result` or `.Wait()` calls
+
+✅ **Logging:**
+- Console.Error.WriteLine() for all logs
+- Never write to stdout (reserved for data)
+
+✅ **Resource Management:**
+- Proper disposal patterns
+- Lifecycle managed by Core Server
 
 ## Testing
 
-To test this plugin:
+### Manual Testing
 
-1. Build and pack the plugin
-2. Configure DataverseMCPToolBox to load the plugin
-3. Connect to a Dataverse environment
-4. Invoke the `who-am-i` tool via MCP
+1. **Install the plugin:**
+   ```bash
+   # From source
+   cd SampleWhoAmIPlugin
+   dotnet pack -c Release
+   # Install via VS Code Extension UI
+   ```
 
-Expected result: Detailed information about the connected user
+2. **Create a Dataverse connection:**
+   - Open VS Code Extension
+   - Add new connection
+   - Authenticate with OAuth device flow
+
+3. **Execute the tool:**
+   - Via Extension UI: Click "Execute" on `who-am-i` tool
+   - Via Copilot: Ask "Use who-am-i tool"
+   - Via direct JSON-RPC call
+
+4. **Verify output:**
+   - Check user display name matches your account
+   - Verify all GUIDs are valid
+   - Confirm environment URL is correct
+
+### Expected Results
+
+**Success Case:**
+```json
+{
+  "userDisplayName": "Your Name",
+  "userId": "valid-guid",
+  "businessUnitId": "valid-guid",
+  "organizationId": "valid-guid",
+  "environmentUrl": "https://your-org.crm.dynamics.com",
+  "message": "Successfully retrieved information for user 'Your Name'"
+}
+```
+
+**Error Case (No Connection):**
+```json
+{
+  "error": {
+    "code": "DATAVERSE_ERROR",
+    "message": "Failed to retrieve user information",
+    "details": { /* error context */ }
+  }
+}
+```
 
 ## Dependencies
 
-- **DataverseMCPToolBox.Extensibility** (v0.1.0-alpha): Core extensibility framework
-- **.NET 8.0**: Target framework
-- **Microsoft.PowerPlatform.Dataverse.Client**: Included via Extensibility package
+This plugin automatically includes:
+
+- **DataverseMCPToolBox.Extensibility** (v0.1.0-alpha)
+  - Extensibility framework
+  - Base classes and interfaces
+  - JSON Schema generation
+- **.NET 8.0** - Target framework
+- **Microsoft.PowerPlatform.Dataverse.Client** (v1.1.32)
+  - Included transitively via Extensibility package
+  - Dataverse SDK operations
+- **NJsonSchema** (v11.0.2)
+  - JSON Schema generation and validation
+- **Newtonsoft.Json** (v13.0.3)
+  - JSON serialization
+
+## Version History
+
+### 1.1.0-alpha (Current)
+- Enhanced error messages with more context
+- Improved fallback handling for display name retrieval
+- Updated documentation with comprehensive examples
+- Code cleanup and optimization
+
+### 1.0.0-alpha
+- Initial release
+- Basic WhoAmI functionality
+- Strongly-typed implementation with McpToolBase
+- Complete Dataverse user information retrieval
+
+## Project Metadata
+
+- **Package ID**: DataverseMCPToolBox.WhoAmI
+- **Version**: 1.1.0-alpha
+- **Author**: Théophile CHIN-NIN
+- **License**: MIT
+- **Target Framework**: .NET 8.0
+- **Language**: C# 12
+
+## Use Cases
+
+This plugin is useful for:
+
+1. **Identity Verification**: Confirm which user account is currently authenticated
+2. **Debugging**: Verify connection context during development
+3. **Auditing**: Track which user performed operations
+4. **Reference Implementation**: Learn plugin development patterns
+5. **Testing**: Validate Dataverse connection and permissions
 
 ## License
 
-MIT License - See LICENSE file in the root of the repository
+MIT License - See [LICENSE](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/LICENSE) file for details.
 
-## Contributing
+## Documentation
 
-This is a sample plugin for demonstration purposes. Feel free to use it as a template for your own plugins.
+Comprehensive guides:
+- [Creating Plugins](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/14-Creating-Plugins.md)
+- [Plugin Architecture](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/15-Plugin-Architecture.md)
+- [Using Tools](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/12-Using-Tools.md)
 
-## Related Resources
+## Repository
 
-- [DataverseMCPToolBox Repository](https://github.com/tchinnin/dataverse-mcp-toolbox)
-- [Plugin Development Instructions](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/.github/instructions/DataverseMCPToolBoxPlugin.instructions.md)
-- [Dataverse SDK Documentation](https://learn.microsoft.com/power-apps/developer/data-platform/)
-- [Model Context Protocol](https://modelcontextprotocol.io/)
+**GitHub**: [https://github.com/tchinnin/dataverse-mcp-toolbox](https://github.com/tchinnin/dataverse-mcp-toolbox)
 
 ## Support
 
-For issues or questions:
-1. Check the DataverseMCPToolBox main repository
-2. Review the plugin development instructions
-3. Open an issue on GitHub
+For issues, questions, or feature requests:
+- **Issues**: [GitHub Issues](https://github.com/tchinnin/dataverse-mcp-toolbox/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/tchinnin/dataverse-mcp-toolbox/discussions)
+
+## Contributing
+
+This is a sample plugin for demonstration purposes. Feel free to:
+- Use it as a template for your own plugins
+- Submit improvements via pull requests
+- Report issues or suggest enhancements
+
+See [CONTRIBUTING.md](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/CONTRIBUTING.md) for guidelines.
+
+## Related Resources
+
+### Official Documentation
+- [Dataverse SDK Documentation](https://learn.microsoft.com/power-apps/developer/data-platform/)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [WhoAmI Message](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/reference/whoami)
+
+### Related Packages
+- **[DataverseMCPToolBox.Runtime](https://www.nuget.org/packages/DataverseMCPToolBox.Runtime/)** - Core Server and Bridge binaries
+- **[DataverseMCPToolBox.Extensibility](https://www.nuget.org/packages/DataverseMCPToolBox.Extensibility/)** - Plugin development SDK
+
+### Development Guides
+- [Plugin Development Instructions](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/.github/instructions/DataverseMCPToolBoxPlugin.instructions.md)
+- [Architecture Documentation](https://github.com/tchinnin/dataverse-mcp-toolbox/blob/main/Docs/04-Architecture.md)
+
+## Author
+
+**Théophile CHIN-NIN**
+- GitHub: [@tchinnin](https://github.com/tchinnin)
+
+---
+
+**Note**: This is an alpha release. APIs and behavior may change in future versions. Use in production environments at your own discretion.
