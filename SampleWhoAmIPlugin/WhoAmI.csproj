@@ -6,9 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     
+    <!-- Assembly Version (must be numeric with parts <= 65535) -->
+    <AssemblyVersion>0.2.2602.4</AssemblyVersion>
+    <FileVersion>0.2.2602.4</FileVersion>
+    
     <!-- NuGet Package Metadata -->
     <PackageId>DataverseMCPToolBox.WhoAmI</PackageId>
-    <Version>1.1.0-alpha</Version>
+    <Version>0.2.260204-beta</Version>
     <Authors>Théophile CHIN-NIN</Authors>
     <Company>tchinnin</Company>
     <Description>WhoAmI plugin for DataverseMCPToolBox - retrieves current Dataverse user information</Description>
