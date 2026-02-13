@@ -4,6 +4,30 @@
   "description": "Manage Dataverse connections and expose MCP tools for GitHub Copilot",
   "version": "0.2.260204",
   "publisher": "tchinnin",
+  "icon": "icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tchinnin/dataverse-mcp-toolbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tchinnin/dataverse-mcp-toolbox/issues"
+  },
+  "homepage": "https://github.com/tchinnin/dataverse-mcp-toolbox#readme",
+  "keywords": [
+    "dataverse",
+    "power-platform",
+    "dynamics365",
+    "mcp",
+    "model-context-protocol",
+    "copilot",
+    "github-copilot",
+    "ai"
+  ],
+  "galleryBanner": {
+    "color": "#2B5797",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.102.0"
   },
@@ -46,7 +70,7 @@
         {
           "id": "dataverse-connections",
           "title": "Dataverse Connections",
-          "icon": "$(database)"
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -236,7 +260,9 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "copy-local-server": "bash scripts/copy-local-server.sh",
-    "dev": "npm run compile && npm run copy-local-server"
+    "dev": "npm run compile && npm run copy-local-server",
+    "package": "vsce package",
+    "install-local": "code --install-extension $(ls -t *.vsix | head -1)"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
@@ -244,6 +270,7 @@
     "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/vsce": "^2.22.0",
     "eslint": "^8.54.0",
     "typescript": "^5.3.0"
   },

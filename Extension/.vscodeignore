@@ -8,5 +8,9 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
-# Note: plugins/ folder should be included (not ignored) so NuGet packages can be downloaded here
-!plugins/
+# Exclude server/ folder - binaries are downloaded from NuGet at runtime
+server/**
+# Exclude plugins/ folder - plugins are downloaded from NuGet at runtime
+plugins/**
+# Exclude scripts/ folder - only needed for local development
+scripts/**
